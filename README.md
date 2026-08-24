@@ -5,15 +5,19 @@ question at a time, and watch the room's collective answer form on the projector
 while Claude Haiku quietly tidies it up.
 
 Each exercise is a **sheet**: a set of questions with its own permanent, memorable
-URL such as `cooljaguar.duckdns.org:8080/braveotter`. Run it live, then close it -
+URL such as `cooljaguar.duckdns.org:3000/braveotter`. Run it live, then close it -
 the URL keeps working as a read-only record students can revisit weeks later.
 
-Questions come in two kinds:
+Questions come in three kinds:
 
 - **tags** - a word cloud the class builds together. Type a tag or tap someone
-  else's. Haiku folds spellings and synonyms together as they arrive.
+  else's to vote for it. Haiku folds spellings and synonyms together as they
+  arrive. Can start with words already on the board.
 - **freetext** - a sentence or two, capped at 280 characters, which everyone else
   can up- or down-vote. Afterwards Haiku groups the answers into named themes.
+- **choice** - a fixed ballot. Everyone picks exactly one option; changing your
+  mind moves your vote rather than adding one, so the counts always sum to the
+  number of people who answered. A yes/no question is a choice with two options.
 
 Three screens read the same sheet at once: the students' phones, a **live view**
 for the projector, and a **dashboard** of six analytic panels.
@@ -26,7 +30,7 @@ cp .env.example .env      # then edit it
 npm start
 ```
 
-Open <http://localhost:8080/presenter>, sign in, and create a sheet. The five
+Open <http://localhost:3000/presenter>, sign in, and create a sheet. The six
 starter questions ship in `sheets/intro-to-hci.json` and are seeded on first run.
 
 ## Running a class
@@ -69,8 +73,8 @@ Everything lives in `.env`:
 |---|---|
 | `PRESENTER_PASSWORD` | Gate for the presenter console. Required. |
 | `ANTHROPIC_API_KEY` | Tag merging. Leave unset to run without it. |
-| `PORT` | Defaults to `8080`. |
-| `PUBLIC_BASE_URL` | What students actually type, e.g. `http://cooljaguar.duckdns.org:8080`. Used for the join URL and QR code. |
+| `PORT` | Defaults to `3000`. |
+| `PUBLIC_BASE_URL` | What students actually type, e.g. `http://cooljaguar.duckdns.org:3000`. Used for the join URL and QR code. |
 
 Without `PUBLIC_BASE_URL` the QR code encodes whatever `Host` header the browser
 sent, which on a droplet is usually the bare IP. Set it.
@@ -86,12 +90,29 @@ Drop a JSON file in `sheets/`:
   "status": "draft",
   "questions": [
     { "title": "What is HCI?", "type": "tags", "description": "One or two words." },
-    { "title": "Why is it hard?", "type": "freetext", "description": "A sentence." }
+    { "title": "Why is it hard?", "type": "freetext", "description": "A sentence." },
+    { "title": "Art or engineering?", "type": "choice",
+      "options": ["art", "engineering", "both"] },
+    { "title": "What makes it bad?", "type": "tags",
+      "options": ["slow", "confusing"] }
   ]
 }
 ```
 
-`type` is `tags` (the default) or `freetext`.
+`type` is `tags` (the default), `freetext`, or `choice`.
+
+`options` means two different things, deliberately:
+
+- on a **choice** question they are the ballot. At least two, at most eight, and
+  students cannot add to them.
+- on a **tags** question they are a starting point - words already on the board
+  that students can vote for, ignore, or add to. That is how "art" and
+  "engineering" get put up without deciding for the room that those are the only
+  two answers.
+
+Authored options are remembered as authored. Cloning a sheet carries them over
+and leaves last year's student answers behind, and tag merging will never fold
+one away into a word a student typed.
 
 Files are **seeded once, keyed on the filename**. On every boot the server loads
 any file it has not seen before and ignores the rest - so questions you later edit
@@ -121,6 +142,20 @@ Each merge is recorded as an **alias**, so the next student who types the folded
 word resolves locally with no further API calls.
 
 If `ANTHROPIC_API_KEY` is unset the app logs one line and runs without merging.
+
+## One phone, one vote - roughly
+
+The session id lives in **sessionStorage**, so each browser tab is its own voter.
+
+That is a deliberate loosening. In localStorage, two tabs of one browser were one
+voter, and the second tab's votes disappeared into the unique constraint with no
+error and no visible effect - which is the most confusing thing this app could do,
+because everything looks like it worked.
+
+The trade: somebody who deliberately opens five tabs gets five votes. localStorage
+never really stopped that either - a private window was always enough - and this is
+a lecture exercise, not a ballot. What the id is genuinely for is absorbing the
+accidental double-tap, and per-tab still does that.
 
 ## How theme clustering works
 
@@ -190,12 +225,12 @@ git clone <your repo> /opt/folksonomy && cd /opt/folksonomy
 npm ci --omit=dev
 cp .env.example .env && nano .env      # set the password, key, and PUBLIC_BASE_URL
 
-sudo ufw allow 8080/tcp
+sudo ufw allow 3000/tcp
 npm start
 ```
 
 Point your Duck DNS hostname at the droplet's IP, and students reach it at
-`http://<hostname>:8080/<slug>`. Port 80 is not used, so the port is part of the
+`http://<hostname>:3000/<slug>`. Port 80 is not used, so the port is part of the
 address you read out.
 
 To survive a crash or reboot, run it under a process manager:
@@ -241,6 +276,7 @@ since the suites assert on the starting state.
 node scripts/merge-test.mjs      # merge, vote collision, alias resolution
 node scripts/worker-test.mjs     # merge worker queueing and its guards (stubbed API)
 node scripts/cluster-test.mjs    # clustering, and every way it distrusts the model
+node scripts/choice-test.mjs     # ballots, seeded options, cloning, throttling
 node scripts/smoke.mjs           # end-to-end over HTTP + WebSocket
 node scripts/freetext-test.mjs   # posting, the undo/flip vote rule, type guards
 node scripts/ui-test.mjs         # real browser: student page rendering and typing

@@ -285,6 +285,9 @@ const cooccurrence = {
     if (question.type === 'freetext') {
       return empty(root, 'Co-occurrence applies to tag questions.');
     }
+    if (question.type === 'choice') {
+      return empty(root, 'Everyone picks exactly one option, so nothing travels together.');
+    }
 
     const links = (analytics?.cooccurrence || []).map((d) => ({ ...d }));
     if (links.length === 0) {

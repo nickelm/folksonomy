@@ -60,7 +60,16 @@
           <select id="q-type">
             <option value="tags">Tags - a word cloud the class builds together</option>
             <option value="freetext">Freetext - sentences the class votes on</option>
+            <option value="choice">Choice - a fixed ballot, one pick each</option>
           </select>
+        </div>
+        <div class="field" id="options-field">
+          <label for="q-options">Options</label>
+          <input type="text" id="q-options" placeholder="art, engineering">
+          <p class="hint" id="options-hint">
+            Comma separated. Required for a choice question; on a tags question
+            these are starting words the class can still add to.
+          </p>
         </div>
         <div class="row">
           <button class="btn btn-primary" id="add-question">Add question</button>

@@ -1,5 +1,13 @@
 node_modules/
+
+# Every .env variant, including backups and per-machine copies.
+# .env alone did not cover .env.bak-8080, which is how a live API key reached
+# a commit. Ignore the whole family and allow the one file that is meant to be
+# committed back in.
 .env
+.env.*
+!.env.example
+
 data/
 *.log
 scripts/shot-*.png

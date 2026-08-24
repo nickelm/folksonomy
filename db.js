@@ -28,7 +28,11 @@ export const MAX_RESPONSES_PER_SESSION_PER_QUESTION = 3;
 // lecture hall, but it stops one runaway question from making every tick huge.
 export const MAX_RESPONSES_IN_STATE = 200;
 
-export const QUESTION_TYPES = new Set(['tags', 'freetext']);
+export const QUESTION_TYPES = new Set(['tags', 'freetext', 'choice']);
+
+// A choice question's options are the most anyone should have to read off a
+// projector and pick between on a phone.
+export const MAX_OPTIONS = 8;
 
 export function normalizeQuestionType(raw) {
   return QUESTION_TYPES.has(raw) ? raw : 'tags';
@@ -70,6 +74,7 @@ db.exec(`
     id          INTEGER PRIMARY KEY,
     question_id INTEGER NOT NULL REFERENCES questions(id) ON DELETE CASCADE,
     label       TEXT NOT NULL,
+    seeded      INTEGER NOT NULL DEFAULT 0,
     created_at  INTEGER NOT NULL,
     UNIQUE (question_id, label)
   );
@@ -131,6 +136,7 @@ function addColumnIfMissing(table, column, ddl) {
 }
 
 addColumnIfMissing('questions', 'type', "type TEXT NOT NULL DEFAULT 'tags'");
+addColumnIfMissing('tags', 'seeded', 'seeded INTEGER NOT NULL DEFAULT 0');
 
 /**
  * Fold a raw submission into its canonical stored form, or return null if it is
@@ -245,7 +251,13 @@ export function cloneSheet(sourceSheetId, title) {
       VALUES (?, ?, ?, ?, ?)
     `);
     for (const q of listQuestions(sourceSheetId)) {
-      insert.run(sheet.id, q.position, q.title, q.description, q.type);
+      const info = insert.run(sheet.id, q.position, q.title, q.description, q.type);
+      // Seeded options are part of the question, not part of the answers, so a
+      // clone starts with them and with nothing else: a cloned choice question
+      // needs its ballot, and last year's starting words are worth keeping,
+      // but last year's students' words are not.
+      const authored = listOptions(q.id).filter((o) => o.seeded).map((o) => o.label);
+      addOptions(info.lastInsertRowid, authored);
     }
     return sheet;
   })();
@@ -269,17 +281,80 @@ export function getQuestion(questionId) {
   return db.prepare('SELECT * FROM questions WHERE id = ?').get(questionId);
 }
 
-export function addQuestion(sheetId, { title, description = '', type = 'tags' }) {
-  const next = db.prepare(
-    'SELECT COALESCE(MAX(position), 0) + 1 AS pos FROM questions WHERE sheet_id = ?',
-  ).get(sheetId).pos;
+/**
+ * Add a question, optionally starting it off with some options already on it.
+ *
+ * For a `choice` question the options ARE the question - there is nothing to
+ * answer without them. For a `tags` question they are a seed: words the class
+ * starts from and can add to, which is how you put "art" and "engineering" on
+ * the board without deciding for anyone that those are the only two answers.
+ *
+ * Options carry no votes. They exist, at zero, until somebody picks one.
+ */
+export function addQuestion(sheetId, { title, description = '', type = 'tags', options = [] }) {
+  return db.transaction(() => {
+    const next = db.prepare(
+      'SELECT COALESCE(MAX(position), 0) + 1 AS pos FROM questions WHERE sheet_id = ?',
+    ).get(sheetId).pos;
 
-  const info = db.prepare(`
-    INSERT INTO questions (sheet_id, position, title, description, type)
-    VALUES (?, ?, ?, ?, ?)
-  `).run(sheetId, next, title, description, normalizeQuestionType(type));
+    const info = db.prepare(`
+      INSERT INTO questions (sheet_id, position, title, description, type)
+      VALUES (?, ?, ?, ?, ?)
+    `).run(sheetId, next, title, description, normalizeQuestionType(type));
 
-  return getQuestion(info.lastInsertRowid);
+    addOptions(info.lastInsertRowid, options);
+    return getQuestion(info.lastInsertRowid);
+  })();
+}
+
+/**
+ * Put labels on a question without voting for them.
+ *
+ * Insertion order is preserved and is what a choice question is displayed in -
+ * an option list that reordered itself as votes arrived would be unusable, and
+ * dishonest besides, because the order an option was authored in is not
+ * information about the answer.
+ */
+export function addOptions(questionId, labels) {
+  if (!Array.isArray(labels) || labels.length === 0) return [];
+
+  // seeded = 1 is what separates an option somebody authored from a word a
+  // student produced. Without it a clone cannot tell which to carry over, and
+  // merging cannot tell which it must not fold away.
+  const insert = db.prepare(
+    'INSERT OR IGNORE INTO tags (question_id, label, seeded, created_at) VALUES (?, ?, 1, ?)',
+  );
+
+  const added = [];
+  db.transaction(() => {
+    const now = Date.now();
+    for (const raw of labels.slice(0, MAX_OPTIONS)) {
+      const label = normalizeTag(raw);
+      if (!label) continue;
+      insert.run(questionId, label, now + added.length);
+      added.push(label);
+    }
+  })();
+
+  return added;
+}
+
+/**
+ * A question's options in the order they were authored, with their counts.
+ *
+ * listTags sorts by popularity, which is right for a cloud and wrong for a
+ * ballot: options that swap places under the thumb about to tap them is how
+ * people vote for the wrong thing.
+ */
+export function listOptions(questionId) {
+  return db.prepare(`
+    SELECT t.id, t.label, t.seeded, COUNT(v.id) AS count
+      FROM tags t
+      LEFT JOIN votes v ON v.tag_id = t.id
+     WHERE t.question_id = ?
+     GROUP BY t.id
+     ORDER BY t.created_at ASC, t.id ASC
+  `).all(questionId);
 }
 
 export function updateQuestion(questionId, fields) {
@@ -333,7 +408,7 @@ export function setActiveQuestion(sheetId, questionId) {
 
 export function listTags(questionId) {
   return db.prepare(`
-    SELECT t.id, t.label, COUNT(v.id) AS count
+    SELECT t.id, t.label, t.seeded, COUNT(v.id) AS count
       FROM tags t
       LEFT JOIN votes v ON v.tag_id = t.id
      WHERE t.question_id = ?
@@ -404,6 +479,63 @@ export function recordTag({ questionId, rawTag, sessionId, allowCreate = true })
   })();
 }
 
+/**
+ * Pick exactly one option, replacing whatever this session picked before.
+ *
+ * Single-select is the point: it is what makes the totals sum to the number of
+ * people who answered, and therefore what makes a percentage mean anything. So
+ * changing your mind moves the vote rather than adding one.
+ *
+ * Re-picking what you already have is a no-op, not a toggle. A ballot with no
+ * option selected is not a state this question has.
+ */
+export function recordChoice({ questionId, rawTag, sessionId }) {
+  const label = normalizeTag(rawTag);
+  if (!label) return { ok: false, reason: 'invalid_tag' };
+  if (!sessionId || typeof sessionId !== 'string') {
+    return { ok: false, reason: 'invalid_session' };
+  }
+
+  return db.transaction(() => {
+    // No creation here, ever: the options are the question.
+    const tag = findTag.get(questionId, label);
+    if (!tag) return { ok: false, reason: 'unknown_option' };
+
+    const existing = db.prepare(
+      'SELECT tag_id FROM votes WHERE question_id = ? AND session_id = ?',
+    ).get(questionId, sessionId);
+
+    if (existing && existing.tag_id === tag.id) {
+      return { ok: true, changed: false, tagId: tag.id, label: tag.label };
+    }
+
+    db.prepare('DELETE FROM votes WHERE question_id = ? AND session_id = ?')
+      .run(questionId, sessionId);
+    db.prepare(`
+      INSERT INTO votes (question_id, tag_id, session_id, created_at)
+      VALUES (?, ?, ?, ?)
+    `).run(questionId, tag.id, sessionId, Date.now());
+
+    return { ok: true, changed: true, tagId: tag.id, label: tag.label };
+  })();
+}
+
+/** What this session currently has selected on a choice question, or null. */
+export function getChoice(questionId, sessionId) {
+  const row = db.prepare(`
+    SELECT t.label
+      FROM votes v
+      JOIN tags t ON t.id = v.tag_id
+     WHERE v.question_id = ? AND v.session_id = ?
+  `).get(questionId, sessionId);
+  return row ? row.label : null;
+}
+
+/** Drop every vote on a question but keep its options standing. */
+export function clearVotes(questionId) {
+  db.prepare('DELETE FROM votes WHERE question_id = ?').run(questionId);
+}
+
 export function clearTags(questionId) {
   db.transaction(() => {
     db.prepare('DELETE FROM votes WHERE question_id = ?').run(questionId);
@@ -434,6 +566,11 @@ export function mergeTag(questionId, fromLabel, intoTagId) {
   return db.transaction(() => {
     const from = findTag.get(questionId, fromLabel);
     if (!from || from.id === intoTagId) return false;
+
+    // A seeded option was put there on purpose. Folding "art" into a student's
+    // "artistic" would quietly delete the word the question was built around -
+    // and the merge is one-way, so there would be no getting it back.
+    if (from.seeded) return false;
 
     const into = db.prepare('SELECT * FROM tags WHERE id = ? AND question_id = ?')
       .get(intoTagId, questionId);
@@ -635,7 +772,9 @@ export function buildSheetState(sheetId, { forPresenter = false } = {}) {
       entry.responseCount = countResponses(q.id);
       if (forPresenter || q.revealed) entry.responses = listResponses(q.id);
     } else if (forPresenter || q.revealed) {
-      entry.tags = listTags(q.id);
+      // Same shape either way, so every chart downstream is unchanged; only the
+      // order differs, and only because a ballot must not reorder itself.
+      entry.tags = q.type === 'choice' ? listOptions(q.id) : listTags(q.id);
     }
 
     return entry;
@@ -758,6 +897,7 @@ export function seedFromFiles(log = console.log) {
           title: q.title,
           description: typeof q.description === 'string' ? q.description : '',
           type: normalizeQuestionType(q.type),
+          options: Array.isArray(q.options) ? q.options : [],
         });
       }
       return created;

@@ -31,7 +31,9 @@ let online = true;
 // --------------------------------------------------------------------------
 
 function buildCard(question) {
-  return question.type === 'freetext' ? buildFreetextCard(question) : buildTagCard(question);
+  if (question.type === 'freetext') return buildFreetextCard(question);
+  if (question.type === 'choice') return buildChoiceCard(question);
+  return buildTagCard(question);
 }
 
 function buildTagCard(question) {
@@ -89,6 +91,125 @@ function buildTagCard(question) {
   };
   cards.set(question.id, card);
   return card;
+}
+
+/**
+ * A choice question: a fixed ballot, one pick.
+ *
+ * No text input, because the options are the question. The rows keep the order
+ * they were authored in and never re-sort - a ballot that rearranges itself
+ * under the thumb about to tap it makes people vote for the wrong thing.
+ */
+function buildChoiceCard(question) {
+  const root = document.createElement('section');
+  root.className = 'question question-choice';
+
+  const statusLine = document.createElement('p');
+  statusLine.className = 'status-line';
+  statusLine.hidden = true;
+
+  const heading = document.createElement('h2');
+  const desc = document.createElement('p');
+  desc.className = 'desc';
+
+  const hint = document.createElement('p');
+  hint.className = 'hint';
+
+  const locked = document.createElement('p');
+  locked.className = 'locked';
+  locked.textContent = 'Opens when we get there.';
+  locked.hidden = true;
+
+  const list = document.createElement('div');
+  list.className = 'choices';
+  list.setAttribute('role', 'radiogroup');
+  list.setAttribute('aria-label', question.title);
+
+  root.append(statusLine, heading, desc, hint, locked, list);
+
+  const card = {
+    type: 'choice',
+    // No form of its own, but render() speaks to every card the same way.
+    root, heading, desc, statusLine, hint, locked, list,
+    form: { hidden: true }, input: { disabled: true }, button: { disabled: true },
+    rows: new Map(),
+  };
+
+  cards.set(question.id, card);
+  return card;
+}
+
+function renderChoices(card, question, interactive) {
+  const options = question.tags || [];
+  const total = options.reduce((sum, o) => sum + o.count, 0);
+  const mine = voted.chosen(question.id);
+  const seen = new Set();
+
+  options.forEach((option, index) => {
+    seen.add(option.id);
+    let row = card.rows.get(option.id);
+
+    if (!row) {
+      const el = document.createElement('button');
+      el.type = 'button';
+      el.className = 'choice';
+      el.setAttribute('role', 'radio');
+
+      const bar = document.createElement('span');
+      bar.className = 'choice-bar';
+      const label = document.createElement('span');
+      label.className = 'choice-label';
+      const count = document.createElement('span');
+      count.className = 'choice-count';
+
+      el.append(bar, label, count);
+      row = { el, bar, label, count, _count: null };
+      card.rows.set(option.id, row);
+      card.list.append(el);
+
+      el.addEventListener('click', () => {
+        if (el.disabled) return;
+        select(question.id, el.dataset.label, card.hint);
+      });
+    }
+
+    row.el.dataset.label = option.label;
+    row.label.textContent = option.label;
+
+    if (row._count !== option.count) {
+      row.count.textContent = option.count;
+      if (row._count !== null && option.count > row._count) {
+        row.el.classList.remove('just-bumped');
+        void row.el.offsetWidth;
+        row.el.classList.add('just-bumped');
+      }
+      row._count = option.count;
+    }
+
+    // Share of the room, not share of the leader: on a single-select question
+    // the total IS everyone who answered, so a percentage is honest here in a
+    // way it would not be on a tags question.
+    const share = total > 0 ? option.count / total : 0;
+    row.bar.style.width = `${(share * 100).toFixed(1)}%`;
+
+    const isMine = mine === option.label;
+    row.el.classList.toggle('is-mine', isMine);
+    row.el.setAttribute('aria-checked', String(isMine));
+    row.el.disabled = !interactive;
+    row.el.title = interactive
+      ? `Pick "${option.label}"`
+      : `${option.label}: ${option.count} of ${total}`;
+
+    const atIndex = card.list.children[index];
+    if (atIndex !== row.el) card.list.insertBefore(row.el, atIndex || null);
+  });
+
+  for (const [id, row] of card.rows) {
+    if (!seen.has(id)) {
+      row.el.remove();
+      card.rows.delete(id);
+    }
+  }
 }
 
 /**
@@ -229,6 +350,18 @@ function vote(questionId, label, hint) {
   voted.add(questionId, label);
 }
 
+function select(questionId, label, hint) {
+  const sent = socket?.send({ type: 'select_choice', questionId, tag: label, sessionId });
+  if (!sent) {
+    showHint(hint, 'Not connected - reconnecting...', true);
+    return;
+  }
+  // Single-select locally too, so the previous pick clears the instant this one
+  // is tapped rather than a broadcast later.
+  voted.select(questionId, label);
+  showHint(hint, 'Recorded.');
+}
+
 function submitResponse(questionId, input, hint, updateCounter) {
   const value = input.value.trim();
   if (!value) return;
@@ -277,6 +410,7 @@ const REASONS = {
   session_response_limit: 'You have posted plenty here. Vote on someone else instead.',
   unknown_response: 'That answer is no longer there.',
   wrong_question_type: 'That did not go through.',
+  unknown_option: 'That option is no longer on the ballot.',
 };
 
 // --------------------------------------------------------------------------
@@ -592,11 +726,18 @@ function render(state) {
     card.statusLine.hidden = !isActive;
     card.statusLine.textContent = 'Answering now';
 
-    card.form.hidden = !interactive;
-    card.input.disabled = !interactive;
-    card.button.disabled = !interactive;
+    if (card.type !== 'choice') {
+      card.form.hidden = !interactive;
+      card.input.disabled = !interactive;
+      card.button.disabled = !interactive;
+    }
 
-    if (card.type === 'freetext') {
+    if (card.type === 'choice') {
+      const revealed = Boolean(question.tags);
+      card.locked.hidden = revealed;
+      card.list.hidden = !revealed;
+      if (revealed) renderChoices(card, question, interactive);
+    } else if (card.type === 'freetext') {
       const revealed = Boolean(question.responses);
       card.locked.hidden = revealed;
       card.feed.hidden = !revealed;
@@ -676,6 +817,12 @@ socket = connect({
   },
   // The server is the authority on what a tap resolved to. This only ever fires
   // when the optimistic guess was wrong - a double tap racing its own undo.
+  // Same idea for a ballot: the server's word on which option is mine.
+  onChoiceAck({ questionId, label }) {
+    if (voted.chosen(questionId) === label) return;
+    voted.select(questionId, label);
+    if (latest) render(latest);
+  },
   onVoteAck({ questionId, responseId, direction }) {
     if (myVotes.get(questionId, responseId) === direction) return;
     myVotes.set(questionId, responseId, direction);

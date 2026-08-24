@@ -25,6 +25,9 @@ const listEl = document.getElementById('questions');
 const qTitle = document.getElementById('q-title');
 const qDesc = document.getElementById('q-desc');
 const qType = document.getElementById('q-type');
+const qOptions = document.getElementById('q-options');
+const optionsField = document.getElementById('options-field');
+const optionsHint = document.getElementById('options-hint');
 const addBtn = document.getElementById('add-question');
 const addHint = document.getElementById('add-hint');
 
@@ -305,7 +308,8 @@ function render(state) {
     card.root.dataset.active = String(question.active);
 
     const freetext = question.type === 'freetext';
-    card.typeBadge.textContent = freetext ? 'freetext' : 'tags';
+    const choice = question.type === 'choice';
+    card.typeBadge.textContent = question.type;
 
     const responses = question.responses || [];
     const answerCount = freetext
@@ -324,7 +328,12 @@ function render(state) {
     card.activate.textContent = question.active ? 'Stop this question' : 'Ask this question';
     card.activate.disabled = closed;
     card.clear.disabled = closed || answerCount === 0;
-    card.clear.textContent = freetext ? 'Clear answers' : 'Clear tags';
+    if (freetext) card.clear.textContent = 'Clear answers';
+    else if (choice) card.clear.textContent = 'Clear votes';
+    else card.clear.textContent = 'Clear tags';
+    // Clearing a ballot removes the votes but keeps the options, so it stays
+    // available even before anyone has voted - there is always something to undo.
+    if (choice) card.clear.disabled = closed || voteCount === 0;
     card.remove.disabled = closed;
 
     // Under four answers there is nothing to find themes in, and the server
@@ -337,7 +346,9 @@ function render(state) {
         : 'Group these answers into themes with Claude';
     }
 
-    const noun = freetext ? 'answers' : 'tags';
+    let noun = 'tags';
+    if (freetext) noun = 'answers';
+    else if (choice) noun = 'options';
     const detail = `${answerCount} ${noun}, ${voteCount} votes`;
     card.meta.textContent = question.revealed
       ? detail
@@ -367,6 +378,7 @@ function render(state) {
   qTitle.disabled = closed;
   qDesc.disabled = closed;
   qType.disabled = closed;
+  qOptions.disabled = closed;
 }
 
 /** Reflect a clustering run on the button that started it. */
@@ -397,6 +409,18 @@ function onClusterStatus({ questionId, state, detail }) {
   }
 }
 
+function syncTypeFields() {
+  const type = qType.value;
+  optionsField.hidden = type === 'freetext';
+  qOptions.placeholder = type === 'choice' ? 'art, engineering' : 'optional starting words';
+  optionsHint.textContent = type === 'choice'
+    ? 'Comma separated, at least two. Students pick exactly one.'
+    : 'Comma separated, optional. Starting words the class can still add to.';
+}
+
+qType.addEventListener('change', syncTypeFields);
+syncTypeFields();
+
 addBtn.addEventListener('click', async () => {
   const title = qTitle.value.trim();
   if (!title) {
@@ -412,10 +436,12 @@ addBtn.addEventListener('click', async () => {
         title,
         description: qDesc.value.trim(),
         type: qType.value,
+        options: qOptions.value.split(',').map((o) => o.trim()).filter(Boolean),
       }),
     });
     qTitle.value = '';
     qDesc.value = '';
+    qOptions.value = '';
     addHint.classList.remove('is-error');
     addHint.textContent = 'Added.';
   } catch (err) {

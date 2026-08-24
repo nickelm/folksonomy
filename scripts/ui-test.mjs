@@ -37,6 +37,13 @@ for (const q of ['What is HCI?', 'What makes an interface bad?']) {
     method: 'POST', headers: auth, body: JSON.stringify({ title: q, description: 'Tag it.' }),
   });
 }
+await fetch(`${BASE}/api/sheets/${slug}/questions`, {
+  method: 'POST',
+  headers: auth,
+  body: JSON.stringify({
+    title: 'Art or engineering?', type: 'choice', options: ['Art', 'Engineering'],
+  }),
+});
 await fetch(`${BASE}/api/sheets/${slug}/status`, {
   method: 'POST', headers: auth, body: JSON.stringify({ status: 'live' }),
 });
@@ -62,12 +69,12 @@ try {
   await page.waitForSelector('.question');
 
   const cards = page.locator('.question');
-  check('both questions render', await cards.count() === 2);
+  check('every question renders', await cards.count() === 3);
 
   check('nothing is answerable before activation',
     await page.locator('.tag-form:visible').count() === 0);
   check('unopened questions show a placeholder',
-    await page.locator('.locked:visible').count() === 2);
+    await page.locator('.locked:visible').count() === 3);
 
   control.send(JSON.stringify({ type: 'set_active', questionId: qa.id }));
   await page.waitForSelector('.question.is-active');
@@ -75,8 +82,8 @@ try {
   check('the active card is highlighted', await page.locator('.question.is-active').count() === 1);
   check('exactly one input is enabled',
     await page.locator('.question.is-active input:not([disabled])').count() === 1);
-  check('the other question stays locked',
-    await page.locator('.question:not(.is-active) .locked:visible').count() === 1);
+  check('the others stay locked',
+    await page.locator('.question:not(.is-active) .locked:visible').count() === 2);
 
   // ---- submit from the page ----
 
@@ -211,7 +218,7 @@ try {
   check('the presenter sees counts on every cloud',
     await control2.locator('.question .tag .count').count() > 0);
   check('the presenter sees clouds for unopened questions too',
-    await control2.locator('.question').count() === 2);
+    await control2.locator('.question').count() === 3);
 
   const connected = Number(await control2.locator('#connected').innerText());
   check('the connected count is live', connected >= 2, `${connected}`);
@@ -230,6 +237,98 @@ try {
   const studentTags = await page.locator('.question').first().locator('.tag').count();
   check('the removal reaches the students', studentTags === after, `${studentTags}`);
 
+  // ---- two tabs of one browser are two people ----
+
+  // The report this came from: opening a second tab, voting, and watching the
+  // count refuse to move. The id used to live in localStorage, which every tab
+  // of a browser shares, so the second vote hit the unique constraint and
+  // vanished with no error at all.
+  control.send(JSON.stringify({ type: 'set_active', questionId: qa.id }));
+  await page.waitForSelector('.question.is-active .tag');
+
+  const second = await phone.newPage();
+  await second.goto(`${BASE}/${slug}`);
+  await second.waitForSelector('.question.is-active .tag');
+
+  const idOf = (p) => p.evaluate(() => sessionStorage.getItem('folksonomy.sessionId'));
+  check('each tab gets its own identity', await idOf(page) !== await idOf(second),
+    'two tabs of one browser must be able to vote separately');
+  check('and it is not left in localStorage',
+    await page.evaluate(() => localStorage.getItem('folksonomy.sessionId')) === null);
+
+  const pillCount = async (p) => Number(
+    await p.locator('.question.is-active .tag').first().locator('.count').innerText(),
+  );
+
+  const wasAt = await pillCount(page);
+  await second.locator('.question.is-active .tag').first().click();
+  await sleep(700);
+  const nowAt = await pillCount(page);
+  check('clicking an existing tag in the second tab votes',
+    nowAt === wasAt + 1, `${wasAt} -> ${nowAt}`);
+
+  // Tapping the same pill again in the same tab is still one vote.
+  await second.locator('.question.is-active .tag').first().click();
+  await sleep(700);
+  check('but the same tab cannot vote twice',
+    await pillCount(page) === nowAt, 'one vote per tab per tag');
+
+  await second.close();
+
+  // ---- the choice ballot ----
+
+  const { questions: all } = await (await fetch(`${BASE}/api/sheets/${slug}/questions`, {
+    headers: auth,
+  })).json();
+  const ballot = all.find((q) => q.type === 'choice');
+
+  control.send(JSON.stringify({ type: 'set_active', questionId: ballot.id }));
+  await page.waitForSelector('.question.is-active .choice:not([disabled])');
+
+  const choices = page.locator('.question.is-active .choice');
+  check('the ballot renders its options', await choices.count() === 2);
+  check('in the order they were authored',
+    (await choices.first().innerText()).toLowerCase().includes('art'));
+  check('there is no way to type a new one',
+    await page.locator('.question.is-active .tag-form:visible').count() === 0);
+
+  await choices.first().click();
+  await page.waitForSelector('.question.is-active .choice.is-mine');
+  check('picking marks it as mine', await page.locator('.choice.is-mine').count() === 1);
+
+  // Past the vote throttle, the way a person changing their mind would be.
+  await sleep(400);
+  await choices.nth(1).click();
+  await sleep(700);
+  check('switching moves the mark, it does not add one',
+    await page.locator('.choice.is-mine').count() === 1);
+  const marked = (await page.locator('.choice.is-mine').allInnerTexts()).join('|');
+  check('and the mark is on the new pick',
+    marked.toLowerCase().includes('engineering'), JSON.stringify(marked));
+
+  const tally = await page.evaluate(() =>
+    [...document.querySelectorAll('.question.is-active .choice-count')]
+      .map((c) => Number(c.textContent)));
+  check('the totals sum to one voter', tally.reduce((a, b) => a + b, 0) === 1,
+    tally.join('/'));
+
+  // A tap the server refuses must not leave the page showing a pick nobody has.
+  // Two clicks inside the throttle: the second is rejected, and the mark has to
+  // fall back to what is actually recorded rather than staying where it landed.
+  await choices.first().click();
+  await choices.nth(0).click();
+  await sleep(900);
+  const stillMine = (await page.locator('.choice.is-mine').allInnerTexts()).join('|');
+  const serverSide = await page.evaluate(() =>
+    [...document.querySelectorAll('.question.is-active .choice')]
+      .filter((c) => Number(c.querySelector('.choice-count').textContent) > 0)
+      .map((c) => c.querySelector('.choice-label').textContent).join('|'));
+  check('a refused tap does not leave the page disagreeing with the server',
+    stillMine.toLowerCase().includes(serverSide.toLowerCase()),
+    `marked ${JSON.stringify(stillMine)}, recorded ${JSON.stringify(serverSide)}`);
+
+  await page.screenshot({ path: 'scripts/shot-choice.png', fullPage: true });
+
   // ---- closing, seen from the student page ----
 
   await fetch(`${BASE}/api/sheets/${slug}/status`, {
@@ -244,6 +343,8 @@ try {
     await page.locator('.locked:visible').count() === 0);
   check('pills are no longer clickable',
     await page.locator('.tag:not([disabled])').count() === 0);
+  check('the ballot is no longer clickable',
+    await page.locator('.choice:not([disabled])').count() === 0);
 
   await page.screenshot({ path: 'scripts/shot-closed.png', fullPage: true });
 } finally {

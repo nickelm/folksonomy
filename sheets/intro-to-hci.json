@@ -16,7 +16,11 @@
     {
       "title": "Is HCI closer to art or engineering?",
       "type": "tags",
-      "description": "Tag your instinct."
+      "description": "Tag your instinct. Add your own if neither fits.",
+      "options": [
+        "art",
+        "engineering"
+      ]
     },
     {
       "title": "What makes an interface bad?",

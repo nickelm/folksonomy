@@ -9,9 +9,11 @@
     "test:merge": "node scripts/merge-test.mjs",
     "test:worker": "node scripts/worker-test.mjs",
     "test:cluster": "node scripts/cluster-test.mjs",
+    "test:choice": "node scripts/choice-test.mjs",
     "test:smoke": "node scripts/smoke.mjs",
     "test:freetext": "node scripts/freetext-test.mjs",
     "test:ui": "node scripts/ui-test.mjs",
+    "test:views": "node scripts/views-test.mjs",
     "loadtest": "node scripts/loadtest.js"
   },
   "engines": {

@@ -203,7 +203,14 @@ check('clone preserves question types',
 
 const cloneExport = await api(`/api/sheets/${cloneSlug}/export.json`, {}, token);
 check('clone starts with no responses',
-  cloneExport.body.questions.every((q) => (q.tags || q.responses).length === 0));
+  cloneExport.body.questions.every((q) => {
+    const items = q.tags || q.options || q.responses || [];
+    return items.every((i) => (i.count ?? i.score ?? 0) === 0);
+  }));
+check('clone carries the authored starting words',
+  cloneExport.body.questions
+    .find((q) => q.title.startsWith('Is HCI closer'))
+    .tags.map((t) => t.label).sort().join(',') === 'art,engineering');
 
 const originalStill = await api(`/api/sheets/${slug}/export.json`, {}, token);
 check('cloning leaves the original untouched',

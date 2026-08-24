@@ -1,7 +1,18 @@
 // Shared client helpers: session identity, the reconnecting socket, and escaping.
 
 /**
- * A stable per-browser id, used to keep one person from voting twice.
+ * A per-tab id, used to keep one person from voting twice.
+ *
+ * sessionStorage, not localStorage, and that choice is the whole design. Every
+ * tab of one browser shares localStorage, so two tabs would be one voter and the
+ * second tab's votes would vanish into the unique constraint with no error - the
+ * single most confusing thing this app can do, because everything looks like it
+ * worked. sessionStorage gives each tab its own identity, survives a reload, and
+ * still absorbs the accidental double-tap that the id is really there to catch.
+ *
+ * The trade is honest: somebody who deliberately opens five tabs gets five votes.
+ * localStorage barely stopped that either - a private window or a cleared site
+ * setting was always enough - and this is a lecture exercise, not a ballot.
  *
  * crypto.randomUUID only exists in a secure context, and this app is served over
  * plain HTTP on a Duck DNS hostname - so on the very machines the students use,
@@ -11,7 +22,7 @@ export function getSessionId() {
   const KEY = 'folksonomy.sessionId';
   let id = null;
   try {
-    id = localStorage.getItem(KEY);
+    id = sessionStorage.getItem(KEY);
   } catch {
     // Private browsing with storage blocked. Fall through to a per-load id:
     // voting still works, it just will not survive a refresh.
@@ -23,14 +34,21 @@ export function getSessionId() {
   id = Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
 
   try {
-    localStorage.setItem(KEY, id);
+    sessionStorage.setItem(KEY, id);
   } catch {
     /* not persistable; the in-memory value is still fine for this page load */
   }
   return id;
 }
 
-/** Remember which tags this browser voted for, so pills look right instantly. */
+/**
+ * Remember which tags this tab voted for, so pills look right instantly.
+ *
+ * sessionStorage for the same reason getSessionId uses it: this records what the
+ * session did, so it has to disappear exactly when that session does. Left in
+ * localStorage it would tell a fresh tab that it had already voted for things it
+ * has not, and the pills would lie.
+ */
 export function votedStore(slug) {
   const KEY = `folksonomy.voted.${slug}`;
   let cache = null;
@@ -38,11 +56,17 @@ export function votedStore(slug) {
   function read() {
     if (cache) return cache;
     try {
-      cache = new Set(JSON.parse(localStorage.getItem(KEY) || '[]'));
+      cache = new Set(JSON.parse(sessionStorage.getItem(KEY) || '[]'));
     } catch {
       cache = new Set();
     }
     return cache;
+  }
+
+  function persist(set) {
+    try {
+      sessionStorage.setItem(KEY, JSON.stringify([...set]));
+    } catch { /* ignore */ }
   }
 
   return {
@@ -50,9 +74,20 @@ export function votedStore(slug) {
     add(questionId, label) {
       const set = read();
       set.add(`${questionId}:${label}`);
-      try {
-        localStorage.setItem(KEY, JSON.stringify([...set]));
-      } catch { /* ignore */ }
+      persist(set);
+    },
+    /** Single-select: this label, and only this label, on this question. */
+    select(questionId, label) {
+      const set = read();
+      const prefix = `${questionId}:`;
+      for (const key of [...set]) if (key.startsWith(prefix)) set.delete(key);
+      if (label !== null) set.add(`${questionId}:${label}`);
+      persist(set);
+    },
+    chosen(questionId) {
+      const prefix = `${questionId}:`;
+      for (const key of read()) if (key.startsWith(prefix)) return key.slice(prefix.length);
+      return null;
     },
   };
 }
@@ -74,7 +109,7 @@ export function responseVoteStore(slug) {
   function read() {
     if (cache) return cache;
     try {
-      cache = new Map(Object.entries(JSON.parse(localStorage.getItem(KEY) || '{}')));
+      cache = new Map(Object.entries(JSON.parse(sessionStorage.getItem(KEY) || '{}')));
     } catch {
       cache = new Map();
     }
@@ -83,7 +118,7 @@ export function responseVoteStore(slug) {
 
   function persist(map) {
     try {
-      localStorage.setItem(KEY, JSON.stringify(Object.fromEntries(map)));
+      sessionStorage.setItem(KEY, JSON.stringify(Object.fromEntries(map)));
     } catch { /* private browsing; the in-memory copy still works this session */ }
   }
 
@@ -129,7 +164,8 @@ export function escapeHtml(text) {
  * classes is picked up within a few seconds.
  */
 export function connect({
-  slug, role, onState, onStatus, onError, onSubmission, onVoteAck, onClusterStatus,
+  slug, role, onState, onStatus, onError,
+  onSubmission, onVoteAck, onChoiceAck, onClusterStatus,
 }) {
   let socket = null;
   let attempt = 0;
@@ -159,6 +195,7 @@ export function connect({
       if (msg.type === 'state_update') onState?.(msg);
       else if (msg.type === 'submission') onSubmission?.(msg);
       else if (msg.type === 'vote_ack') onVoteAck?.(msg);
+      else if (msg.type === 'choice_ack') onChoiceAck?.(msg);
       else if (msg.type === 'cluster_status') onClusterStatus?.(msg);
       else if (msg.type === 'error') onError?.(msg.reason);
     });

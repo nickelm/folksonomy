@@ -14,19 +14,19 @@ import { WebSocketServer } from 'ws';
 import QRCode from 'qrcode';
 
 import {
-  addQuestion, buildSheetState, clearResponses, clearTags, cloneSheet, countResponses,
-  createSheet, deleteQuestion, deleteSheet, getQuestion, getSheetById, getSheetBySlug,
-  listAliases, listAllSheets, listClusters, listPublicSheets, listQuestions,
-  listResponses, listTags, normalizeQuestionType, recordResponse, recordResponseVote,
-  recordTag, removeTag, seedFromFiles, setActiveQuestion, setSheetStatus,
-  tagCooccurrence, updateQuestion, voteTimeline,
+  addOptions, addQuestion, buildSheetState, clearResponses, clearTags, clearVotes,
+  cloneSheet, countResponses, createSheet, deleteQuestion, deleteSheet, getQuestion,
+  getSheetById, getSheetBySlug, listAliases, listAllSheets, listClusters, listOptions,
+  listPublicSheets, listQuestions, listResponses, listTags, normalizeQuestionType,
+  getChoice, recordChoice, recordResponse, recordResponseVote, recordTag, removeTag, seedFromFiles,
+  setActiveQuestion, setSheetStatus, tagCooccurrence, updateQuestion, voteTimeline,
 } from './db.js';
 import { Clusterer } from './cluster.js';
 import { MergeWorker } from './merge.js';
 import { isValidSlug } from './slugs.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
-const PORT = Number(process.env.PORT) || 8080;
+const PORT = Number(process.env.PORT) || 3000;
 const PRESENTER_PASSWORD = process.env.PRESENTER_PASSWORD || '';
 
 // How often a dirty sheet may be flushed to its subscribers. Broadcasting per
@@ -38,8 +38,11 @@ const BROADCAST_INTERVAL_MS = 300;
 // script typed into a browser console halfway through the lecture.
 const SUBMIT_INTERVAL_MS = 800;
 
-// Voting on responses gets its own, looser gate. Reading down a feed and tapping
-// three or four answers is normal behaviour; 800ms would reject most of it.
+// Voting gets its own, looser gate. Adding something is the expensive act worth
+// rate limiting; agreeing with something already there is not, and it is done in
+// bursts - reading down a feed and tapping three answers, or tapping two pills in
+// a cloud. At 800ms most of those taps are silently refused, which looks exactly
+// like the vote not registering.
 const VOTE_INTERVAL_MS = 250;
 
 // Per-tick ceiling on the sedimentation feed. A burst larger than this is one
@@ -311,6 +314,26 @@ wss.on('connection', (socket, req) => {
   });
 });
 
+/**
+ * Tell one client what it actually has selected.
+ *
+ * A choice is single-select, so the client paints the new pick the moment it is
+ * tapped rather than waiting a broadcast. When the server then refuses - the tap
+ * was inside the throttle, the option had just been removed - the client would
+ * otherwise be left showing a pick nobody recorded, with nothing in the state
+ * payload to contradict it: which option is *yours* is the one thing a shared
+ * broadcast cannot carry. So every select_choice is answered, refused or not.
+ */
+function ackChoice(socket, questionId, sessionId) {
+  if (socket.readyState !== socket.OPEN) return;
+  if (!sessionId || typeof sessionId !== 'string') return;
+  socket.send(JSON.stringify({
+    type: 'choice_ack',
+    questionId,
+    label: getChoice(questionId, sessionId),
+  }));
+}
+
 function reject(socket, reason) {
   if (socket.readyState === socket.OPEN) {
     socket.send(JSON.stringify({ type: 'error', reason }));
@@ -332,8 +355,19 @@ function handleMessage(socket, msg) {
   }
 
   const STUDENT_WRITES = new Set([
-    'submit_tag', 'vote_tag', 'submit_response', 'vote_response',
+    'submit_tag', 'vote_tag', 'submit_response', 'vote_response', 'select_choice',
   ]);
+
+  // Which message belongs to which kind of question. A message aimed at the
+  // wrong kind is a bug or a probe, never a student - the three UIs cannot send
+  // each other's messages.
+  const WRITES_FOR = {
+    submit_tag: 'tags',
+    vote_tag: 'tags',
+    submit_response: 'freetext',
+    vote_response: 'freetext',
+    select_choice: 'choice',
+  };
 
   if (STUDENT_WRITES.has(msg.type)) {
     // A closed sheet is an archive. Enforce that here, not only in the UI - the
@@ -344,20 +378,24 @@ function handleMessage(socket, msg) {
     if (!question || question.sheet_id !== sheet.id) return reject(socket, 'unknown_question');
     if (!question.active) return reject(socket, 'question_not_active');
 
-    // A message aimed at the wrong kind of question is a bug or a probe, never a
-    // student: the two UIs cannot send each other's messages.
-    const wantsFreetext = msg.type === 'submit_response' || msg.type === 'vote_response';
-    if (wantsFreetext !== (question.type === 'freetext')) {
+    if (WRITES_FOR[msg.type] !== question.type) {
       return reject(socket, 'wrong_question_type');
     }
 
+    // Creating something is throttled hard; voting for something that already
+    // exists is throttled gently. They are different acts with different costs.
+    const creates = msg.type === 'submit_tag' || msg.type === 'submit_response';
     const now = Date.now();
-    if (msg.type === 'vote_response') {
-      if (now - socket.lastVoteAt < VOTE_INTERVAL_MS) return reject(socket, 'too_fast');
-      socket.lastVoteAt = now;
-    } else {
+
+    if (creates) {
       if (now - socket.lastSubmitAt < SUBMIT_INTERVAL_MS) return reject(socket, 'too_fast');
       socket.lastSubmitAt = now;
+    } else {
+      if (now - socket.lastVoteAt < VOTE_INTERVAL_MS) {
+        if (msg.type === 'select_choice') ackChoice(socket, question.id, msg.sessionId);
+        return reject(socket, 'too_fast');
+      }
+      socket.lastVoteAt = now;
     }
 
     if (msg.type === 'submit_response') {
@@ -398,6 +436,26 @@ function handleMessage(socket, msg) {
       return undefined;
     }
 
+    if (msg.type === 'select_choice') {
+      const result = recordChoice({
+        questionId: question.id,
+        rawTag: msg.tag,
+        sessionId: msg.sessionId,
+      });
+      ackChoice(socket, question.id, msg.sessionId);
+      if (!result.ok) return reject(socket, result.reason);
+
+      // Re-picking what you already had changes nothing, so nothing is broadcast
+      // and no token falls. Only a real switch is an event.
+      if (result.changed) {
+        markDirty(sheet.id);
+        noteSubmission(sheet.id, {
+          questionId: question.id, kind: 'choice', label: result.label,
+        });
+      }
+      return undefined;
+    }
+
     const result = recordTag({
       questionId: question.id,
       rawTag: msg.tag,
@@ -416,7 +474,11 @@ function handleMessage(socket, msg) {
         questionId: question.id, kind: 'tag', label: result.label,
       });
     }
-    if (result.created) merger.enqueue(question.id, result.label);
+    // Only tags questions merge. A choice question cannot reach here, but say so
+    // anyway: folding two options together would silently rewrite the ballot.
+    if (result.created && question.type === 'tags') {
+      merger.enqueue(question.id, result.label);
+    }
     return undefined;
   }
 
@@ -461,6 +523,9 @@ function handleMessage(socket, msg) {
         return reject(socket, 'unknown_question');
       }
       if (question.type === 'freetext') clearResponses(question.id);
+      // A choice question's options are its content, not its answers. Clearing
+      // it must leave the ballot standing or there is nothing left to vote on.
+      else if (question.type === 'choice') clearVotes(question.id);
       else clearTags(question.id);
       markDirty(sheet.id);
       return undefined;
@@ -571,13 +636,33 @@ app.post('/api/sheets/:slug/questions', requireAuth, (req, res) => {
   const title = String(req.body?.title || '').trim();
   if (!title) return res.status(400).json({ error: 'title is required' });
 
+  const type = normalizeQuestionType(req.body?.type);
+  const options = Array.isArray(req.body?.options) ? req.body.options : [];
+
+  if (type === 'choice' && options.filter((o) => String(o).trim()).length < 2) {
+    return res.status(400).json({ error: 'a choice question needs at least two options' });
+  }
+
   const question = addQuestion(sheet.id, {
     title,
     description: String(req.body?.description || '').trim(),
-    type: normalizeQuestionType(req.body?.type),
+    type,
+    options,
   });
   markDirty(sheet.id);
   return res.status(201).json({ question });
+});
+
+app.post('/api/questions/:id/options', requireAuth, (req, res) => {
+  const question = getQuestion(Number(req.params.id));
+  if (!question) return res.status(404).json({ error: 'no such question' });
+  if (question.type === 'freetext') {
+    return res.status(400).json({ error: 'a freetext question has no options' });
+  }
+
+  const added = addOptions(question.id, req.body?.options);
+  markDirty(question.sheet_id);
+  return res.status(201).json({ options: listOptions(question.id), added });
 });
 
 app.patch('/api/questions/:id', requireAuth, (req, res) => {
@@ -627,6 +712,11 @@ app.get('/api/sheets/:slug/export.csv', requireAuth, (req, res) => {
           r.text, r.score, r.clusterLabel || '',
         ]);
       }
+    } else if (question.type === 'choice') {
+      for (const option of listOptions(question.id)) {
+        rows.push([question.position, question.title, question.type,
+          option.label, option.count, '']);
+      }
     } else {
       for (const tag of listTags(question.id)) {
         rows.push([question.position, question.title, question.type, tag.label, tag.count, '']);
@@ -656,6 +746,8 @@ app.get('/api/sheets/:slug/export.json', requireAuth, (req, res) => {
     if (question.type === 'freetext') {
       entry.responses = listResponses(question.id, Number.MAX_SAFE_INTEGER);
       entry.clusters = listClusters(question.id);
+    } else if (question.type === 'choice') {
+      entry.options = listOptions(question.id);
     } else {
       entry.tags = listTags(question.id);
       // The merge history is the interesting part for a folksonomy exercise: it
