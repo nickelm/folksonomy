@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Presenter - folksonomy sheets</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body class="presenter">
+  <div class="wrap">
+    <header class="masthead">
+      <h1>Folksonomy sheets</h1>
+      <p>Presenter console</p>
+    </header>
+
+    <section id="login" class="panel" hidden>
+      <div class="field">
+        <label for="password">Presenter password</label>
+        <input type="password" id="password" autocomplete="current-password">
+      </div>
+      <div class="row">
+        <button class="btn btn-primary" id="login-btn">Sign in</button>
+        <span id="login-error" class="hint is-error"></span>
+      </div>
+    </section>
+
+    <section id="console" hidden>
+      <div class="panel">
+        <h2 style="margin-top:0">New sheet</h2>
+        <div class="field">
+          <label for="new-title">Title</label>
+          <input type="text" id="new-title" placeholder="e.g. Week 3 - Design critique">
+        </div>
+        <div class="row">
+          <button class="btn btn-primary" id="create-btn">Create sheet</button>
+          <span id="create-hint" class="hint"></span>
+        </div>
+      </div>
+
+      <div class="panel">
+        <h2 style="margin-top:0">All sheets</h2>
+        <table class="sheets">
+          <thead>
+            <tr>
+              <th>Sheet</th><th>Status</th><th>Questions</th>
+              <th>Responses</th><th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="sheet-rows"></tbody>
+        </table>
+        <p id="no-sheets" class="empty" hidden>No sheets yet.</p>
+      </div>
+    </section>
+  </div>
+
+  <script type="module" src="/presenter.js"></script>
+</body>
+</html>

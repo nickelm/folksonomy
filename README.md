@@ -1,12 +1,22 @@
 # Folksonomy Sheets
 
-Live tag polling for a lecture hall. Students join on their phones, type or tap
-tags, and watch a shared vocabulary form on the projector while Claude Haiku
-quietly folds near-duplicates together.
+Live polling for a lecture hall. Students join on their phones, answer one
+question at a time, and watch the room's collective answer form on the projector
+while Claude Haiku quietly tidies it up.
 
 Each exercise is a **sheet**: a set of questions with its own permanent, memorable
 URL such as `cooljaguar.duckdns.org:8080/braveotter`. Run it live, then close it -
 the URL keeps working as a read-only record students can revisit weeks later.
+
+Questions come in two kinds:
+
+- **tags** - a word cloud the class builds together. Type a tag or tap someone
+  else's. Haiku folds spellings and synonyms together as they arrive.
+- **freetext** - a sentence or two, capped at 280 characters, which everyone else
+  can up- or down-vote. Afterwards Haiku groups the answers into named themes.
+
+Three screens read the same sheet at once: the students' phones, a **live view**
+for the projector, and a **dashboard** of six analytic panels.
 
 ## Quick start
 
@@ -25,14 +35,31 @@ starter questions ship in `sheets/intro-to-hci.json` and are seeded on first run
    console. It starts as a *draft*: invisible to students.
 2. **At the start** - press **Open to class**. The sheet appears on the student
    index and starts accepting responses.
-3. **During** - open **Run** for the projected view. It shows the join URL and a
-   QR code students can scan. Press **Ask this question** to open one question;
-   only one is open at a time, and only then can anyone answer it.
-4. **Afterwards** - **Close** the sheet. Every cloud is revealed, responses stop,
-   and the URL becomes a permanent record.
+3. **During** - open **Run** for the console. It shows the join URL and a QR code
+   students can scan. Press **Ask this question** to open one question; only one is
+   open at a time, and only then can anyone answer it.
+4. **On the projector** - open **Live view** from the console header. It shows only
+   the question that is currently open, full screen, with no controls.
+5. **Afterwards** - **Close** the sheet. Everything is revealed, responses stop, and
+   the URL becomes a permanent record. The **Dashboard** link is the one to send
+   students home with.
 
-Clouds stay hidden from students until you activate a question, so nobody can read
-ahead and anchor on what the room already said.
+Results stay hidden from students until you activate a question, so nobody can read
+ahead and anchor on what the room already said. Once revealed they stay visible
+permanently and keep updating - a sheet is a notebook page for the session, not a
+slide that disappears.
+
+### Where each screen lives
+
+| Screen | URL | Who |
+|---|---|---|
+| Student sheet | `/<slug>` | Everyone. Also reachable as `/s/<slug>`. |
+| Presenter console | `/presenter/<slug>` | You. Also `/p/<slug>`. Password required. |
+| Live view | `/live/<slug>` | The projector. No controls, no password. |
+| Dashboard | `/d/<slug>` | Anyone. Six panels, click one to fill the screen. |
+
+The bare `/<slug>` is the canonical student URL because it is the one you read
+aloud to a room. `/s/` and `/p/` are aliases that redirect to it.
 
 ## Configuration
 
@@ -54,13 +81,17 @@ Drop a JSON file in `sheets/`:
 
 ```json
 {
+  "slug": "week3",
   "title": "Week 3 - Design critique",
   "status": "draft",
   "questions": [
-    { "title": "What is HCI?", "description": "One or two words." }
+    { "title": "What is HCI?", "type": "tags", "description": "One or two words." },
+    { "title": "Why is it hard?", "type": "freetext", "description": "A sentence." }
   ]
 }
 ```
+
+`type` is `tags` (the default) or `freetext`.
 
 Files are **seeded once, keyed on the filename**. On every boot the server loads
 any file it has not seen before and ignores the rest - so questions you later edit
@@ -68,6 +99,11 @@ in the presenter console are never clobbered by the file they came from. Editing
 file after it has been seeded does nothing; create a new file, or edit in the UI.
 
 `slug` and `status` are optional. Without a slug the server generates a word pair.
+
+The starter sheet ships as `sheets/intro-to-hci.json` with the slug `intro`. If you
+already have a database from before it existed, that file will not be re-read -
+seeding is once per filename. Either add a new file, or add the questions by hand
+in the presenter console.
 
 ## How tag merging works
 
@@ -85,6 +121,63 @@ Each merge is recorded as an **alias**, so the next student who types the folded
 word resolves locally with no further API calls.
 
 If `ANTHROPIC_API_KEY` is unset the app logs one line and runs without merging.
+
+## How theme clustering works
+
+Merging cleans up a tag cloud one word at a time, forever. Clustering is the other
+shape: a single pass over a freetext question that has finished.
+
+Press **Find themes** on a freetext question in the console, or just move on to the
+next question - deactivating a freetext question triggers a run automatically. Every
+answer goes to Haiku at once and comes back sorted into four to six named themes.
+
+The result is checked before it is written. An id the model invented is discarded,
+an answer claimed by two themes goes to the first, and a theme with no usable name
+is dropped. Anything the model left out stays unlabelled and shows as
+"Unclustered" rather than being quietly filed under the nearest heading.
+
+It needs at least four answers, and does nothing without `ANTHROPIC_API_KEY`.
+
+## The live view
+
+`/live/<slug>` is for the projector: the active question, full screen, no chrome.
+
+Underneath is an animated d3 bar chart. Over it, a canvas layer implementing
+**visual sedimentation** (Huron, Vuillemot & Fekete, InfoVis 2013): each submission
+enters as a token at the top of the screen, falls while drifting and fading, and
+merges into the bar for its tag - which grows at the moment the token arrives.
+
+That last detail is the point, and it is why the drawn number briefly disagrees
+with the server. A bar that grew on arrival of the *message* would already have
+absorbed the token before it landed, and the merge would be invisible. So the view
+holds each increment back until its own token gets there. Tokens that cannot be
+drawn - past the 240-particle cap, or on a machine set to reduce motion - do not
+hold anything back, and their counts appear immediately.
+
+Set `prefers-reduced-motion` and the canvas is skipped entirely; the bar chart is
+complete on its own.
+
+## The dashboard
+
+`/d/<slug>` is six panels over one question, with a selector at the top. Click any
+panel to fill the viewport, Escape to go back.
+
+1. **Ranked frequency** - sorted animated bars. The default readout.
+2. **Word cloud** - Jason Davies' `d3-cloud` layout. On a freetext question it
+   clouds word frequencies from the answers instead.
+3. **Theme clusters** - the Haiku grouping, one column per theme.
+4. **Tags that travel together** - a force-directed graph of tags the same people
+   picked together.
+5. **How the vocabulary formed** - when each tag first appeared and how it
+   accumulated.
+6. **Raw responses** - unaggregated, score-sorted for freetext.
+
+One colour scale is shared across all six, keyed on the label, so a tag is the same
+colour everywhere - including on the live view next to it.
+
+d3 and `d3-cloud` are served from `/vendor/` straight out of `node_modules`. No
+CDN, so a projector with no internet still draws; and the student pages never load
+them, which is why this is not a global script tag.
 
 ## Deploying to a droplet
 
@@ -125,8 +218,9 @@ it only shows up once the app is on a real hostname, never on localhost.
 
 SQLite at `data/poll.db`, created automatically. Back it up by copying the file.
 
-Export a sheet from the presenter console as CSV (tags and counts) or JSON (adds
-the merge history - which words the class produced before they were folded).
+Export a sheet from the presenter console as CSV (tags with counts, or answers with
+scores) or JSON (adds the merge history - which words the class produced before they
+were folded - and the theme each answer landed in).
 
 Closing a sheet is deliberately one-way in the UI, and asks you to type the sheet
 title to confirm, because a stray click mid-lecture would be unrecoverable. If you
@@ -144,12 +238,25 @@ Start the server on a **fresh** database first (`rm -rf data && PORT=8099 npm st
 since the suites assert on the starting state.
 
 ```bash
-node scripts/merge-test.mjs    # merge, vote collision, alias resolution
-node scripts/worker-test.mjs   # merge worker queueing and its guards (stubbed API)
-node scripts/smoke.mjs         # end-to-end over HTTP + WebSocket
-node scripts/ui-test.mjs       # real browser: rendering, typing, layout
-SLUG=<slug> node scripts/loadtest.js   # 150 connections and a burst
+node scripts/merge-test.mjs      # merge, vote collision, alias resolution
+node scripts/worker-test.mjs     # merge worker queueing and its guards (stubbed API)
+node scripts/cluster-test.mjs    # clustering, and every way it distrusts the model
+node scripts/smoke.mjs           # end-to-end over HTTP + WebSocket
+node scripts/freetext-test.mjs   # posting, the undo/flip vote rule, type guards
+node scripts/ui-test.mjs         # real browser: student page rendering and typing
+node scripts/views-test.mjs      # real browser: live view and dashboard
+
+SLUG=<slug> node scripts/loadtest.js                # 150 connections and a burst
+SLUG=<slug> MODE=freetext node scripts/loadtest.js  # the same, with 280-char answers
 ```
 
-`ui-test.mjs` needs `npm install` to have brought in Playwright and uses your
-installed Chrome.
+The browser suites need `npm install` to have brought in Playwright and use your
+installed Chrome. They write screenshots to `scripts/shot-*.png`.
+
+`node scripts/shots.mjs` is not a test - it builds a sheet with both question
+types, some answers and some votes, and photographs the student page and the
+presenter console. Useful for looking at a CSS change without setting a lecture up
+by hand.
+
+Run each suite against a freshly started server: `smoke.mjs` closes the seeded
+sheet, so a second run in the same session reports false failures.

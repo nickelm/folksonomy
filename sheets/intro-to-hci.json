@@ -1,0 +1,37 @@
+{
+  "slug": "intro",
+  "title": "HCI — Lecture 1",
+  "status": "draft",
+  "questions": [
+    {
+      "title": "What is HCI?",
+      "type": "tags",
+      "description": "In one or two words, what does human-computer interaction mean to you?"
+    },
+    {
+      "title": "What tools have you used to build interfaces?",
+      "type": "tags",
+      "description": "Any language, framework, or tool counts."
+    },
+    {
+      "title": "Is HCI closer to art or engineering?",
+      "type": "tags",
+      "description": "Tag your instinct."
+    },
+    {
+      "title": "What makes an interface bad?",
+      "type": "tags",
+      "description": "Tag a frustration or pet peeve from something you've used."
+    },
+    {
+      "title": "Why might HCI be hard?",
+      "type": "freetext",
+      "description": "One or two sentences. You can upvote others' answers."
+    },
+    {
+      "title": "What do you want to get out of this course?",
+      "type": "tags",
+      "description": "A skill, outcome, or question you hope this course answers."
+    }
+  ]
+}

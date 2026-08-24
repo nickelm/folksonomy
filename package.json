@@ -1,0 +1,34 @@
+{
+  "name": "folksonomy",
+  "version": "1.0.0",
+  "description": "Live folksonomy polling sheets for an HCI lecture",
+  "type": "module",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "test:merge": "node scripts/merge-test.mjs",
+    "test:worker": "node scripts/worker-test.mjs",
+    "test:cluster": "node scripts/cluster-test.mjs",
+    "test:smoke": "node scripts/smoke.mjs",
+    "test:freetext": "node scripts/freetext-test.mjs",
+    "test:ui": "node scripts/ui-test.mjs",
+    "loadtest": "node scripts/loadtest.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.72.0",
+    "better-sqlite3": "^12.2.0",
+    "d3": "^7.9.0",
+    "d3-cloud": "^1.2.7",
+    "dotenv": "^17.2.0",
+    "express": "^5.1.0",
+    "qrcode": "^1.5.4",
+    "ws": "^8.18.0",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "playwright": "^1.62.1"
+  }
+}

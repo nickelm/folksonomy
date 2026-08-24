@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Running sheet - folksonomy</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body class="presenter">
+  <div class="wrap">
+    <header class="masthead">
+      <h1 id="sheet-title">Loading...</h1>
+      <p class="view-links">
+        <a href="/presenter">All sheets</a>
+        <a id="link-student" href="#" target="_blank" rel="noopener">Student page</a>
+        <a id="link-live" href="#" target="_blank" rel="noopener">Live view</a>
+        <a id="link-dashboard" href="#" target="_blank" rel="noopener">Dashboard</a>
+      </p>
+    </header>
+
+    <section id="login" class="panel" hidden>
+      <div class="field">
+        <label for="password">Presenter password</label>
+        <input type="password" id="password" autocomplete="current-password">
+      </div>
+      <div class="row">
+        <button class="btn btn-primary" id="login-btn">Sign in</button>
+        <span id="login-error" class="hint is-error"></span>
+      </div>
+    </section>
+
+    <section id="stage" hidden>
+      <div class="panel join">
+        <div style="flex:1 1 260px">
+          <div class="join-url" id="join-url"></div>
+          <p class="join-hint">
+            <span class="stat" id="connected">0</span>
+            <span class="stat-label">connected</span>
+            &middot;
+            <span class="badge" id="status-badge"></span>
+          </p>
+        </div>
+        <div class="join-qr" id="qr"></div>
+      </div>
+
+      <main id="questions"></main>
+
+      <div class="panel">
+        <h2 style="margin-top:0">Add a question</h2>
+        <div class="field">
+          <label for="q-title">Question</label>
+          <input type="text" id="q-title">
+        </div>
+        <div class="field">
+          <label for="q-desc">Description</label>
+          <input type="text" id="q-desc">
+        </div>
+        <div class="field">
+          <label for="q-type">Type</label>
+          <select id="q-type">
+            <option value="tags">Tags - a word cloud the class builds together</option>
+            <option value="freetext">Freetext - sentences the class votes on</option>
+          </select>
+        </div>
+        <div class="row">
+          <button class="btn btn-primary" id="add-question">Add question</button>
+          <span id="add-hint" class="hint"></span>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <script type="module" src="/control.js"></script>
+</body>
+</html>

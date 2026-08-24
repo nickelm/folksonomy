@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Live - folksonomy</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body class="live">
+  <div class="live-wrap">
+    <header class="live-head">
+      <h1 id="q-title"></h1>
+      <p id="q-desc" hidden></p>
+    </header>
+
+    <main id="stage" class="live-stage" hidden>
+      <!-- The canvas sits over the chart, same box, no pointer events. Tokens
+           fall through this layer and sediment into the bars underneath. -->
+      <div id="chart" class="live-chart"></div>
+      <canvas id="particles" class="live-particles"></canvas>
+      <div id="cards" class="live-cards" hidden></div>
+    </main>
+
+    <p id="idle" class="live-idle">Waiting for the next question.</p>
+
+    <footer class="live-foot">
+      <span id="sheet-title"></span>
+      <span><span id="connected">0</span> connected</span>
+    </footer>
+  </div>
+
+  <script src="/vendor/d3.min.js"></script>
+  <script type="module" src="/live.js"></script>
+</body>
+</html>

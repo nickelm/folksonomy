@@ -1,0 +1,993 @@
+/* Folksonomy sheets - shared styles.
+   Tuned for two very different screens: a phone held in one hand at the back of
+   a lecture hall, and a projector washed out by the room lights. */
+
+:root {
+  --bg: #f4f5f7;
+  --card: #ffffff;
+  --ink: #12141a;
+  --ink-soft: #565b66;
+  --ink-faint: #8b909b;
+  --line: #d9dce2;
+  --accent: #1a56db;
+  --accent-soft: #e8effd;
+  --live: #0d7a4a;
+  --live-soft: #e2f5eb;
+  --danger: #b42318;
+  --radius: 14px;
+  --shadow: 0 1px 2px rgba(16, 24, 40, .06), 0 4px 12px rgba(16, 24, 40, .05);
+}
+
+* { box-sizing: border-box; }
+
+/* An explicit display (flex/grid) beats the browser default for [hidden], so a
+   hidden tag form would still show. Several elements here are toggled by the
+   hidden attribute, so make it win everywhere. */
+[hidden] { display: none !important; }
+
+html { -webkit-text-size-adjust: 100%; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font: 17px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  padding: 0 0 4rem;
+}
+
+.wrap {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 1rem;
+}
+
+/* ---------- header ---------- */
+
+.masthead {
+  padding: 1.5rem 0 1rem;
+  border-bottom: 1px solid var(--line);
+  margin-bottom: 1.25rem;
+}
+
+.masthead h1 {
+  margin: 0;
+  font-size: 1.6rem;
+  letter-spacing: -.02em;
+}
+
+.masthead p {
+  margin: .35rem 0 0;
+  color: var(--ink-soft);
+}
+
+.badge {
+  display: inline-block;
+  padding: .2em .6em;
+  border-radius: 999px;
+  font-size: .78rem;
+  font-weight: 600;
+  letter-spacing: .02em;
+  text-transform: uppercase;
+  vertical-align: middle;
+}
+
+.badge-live   { background: var(--live-soft); color: var(--live); }
+.badge-closed { background: #eceef2; color: var(--ink-soft); }
+.badge-draft  { background: #fef3e2; color: #93500b; }
+
+/* ---------- question cards ---------- */
+
+.question {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-left: 5px solid transparent;
+  border-radius: var(--radius);
+  padding: 1.1rem 1.15rem;
+  margin-bottom: 1rem;
+  box-shadow: var(--shadow);
+  transition: border-color .15s ease, opacity .15s ease;
+}
+
+.question.is-active {
+  border-left-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft), var(--shadow);
+}
+
+.question.is-inactive { opacity: .62; }
+
+.question h2 {
+  margin: 0 0 .3rem;
+  font-size: 1.18rem;
+  line-height: 1.3;
+}
+
+.question .desc {
+  margin: 0 0 .9rem;
+  color: var(--ink-soft);
+  font-size: .95rem;
+}
+
+.question .status-line {
+  font-size: .85rem;
+  font-weight: 600;
+  color: var(--accent);
+  margin: 0 0 .5rem;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+}
+
+.locked {
+  margin: .5rem 0 0;
+  padding: .85rem;
+  border: 1px dashed var(--line);
+  border-radius: 10px;
+  color: var(--ink-faint);
+  font-size: .92rem;
+  text-align: center;
+}
+
+/* ---------- tag input ---------- */
+
+.tag-form {
+  display: flex;
+  gap: .5rem;
+  margin-bottom: .9rem;
+}
+
+.tag-form input {
+  flex: 1 1 auto;
+  min-width: 0;
+  font: inherit;
+  padding: .7rem .8rem;
+  border: 1.5px solid var(--line);
+  border-radius: 10px;
+  background: #fff;
+  color: var(--ink);
+}
+
+.tag-form input:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.tag-form input:disabled { background: #f1f2f5; color: var(--ink-faint); }
+
+.tag-form button {
+  flex: 0 0 auto;
+  font: inherit;
+  font-weight: 600;
+  /* 44px tall: the smallest reliably tappable target on a phone. */
+  min-height: 44px;
+  padding: 0 1.1rem;
+  border: none;
+  border-radius: 10px;
+  background: var(--accent);
+  color: #fff;
+  cursor: pointer;
+}
+
+.tag-form button:disabled { background: #b9bfcb; cursor: not-allowed; }
+
+.hint {
+  margin: -.55rem 0 .8rem;
+  font-size: .85rem;
+  min-height: 1.2em;
+  color: var(--ink-faint);
+}
+
+.hint.is-error { color: var(--danger); }
+
+/* ---------- tag cloud ---------- */
+
+.cloud {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .45rem;
+  align-items: center;
+}
+
+.cloud:empty::after {
+  content: "No tags yet - be the first.";
+  color: var(--ink-faint);
+  font-size: .92rem;
+}
+
+/* Nobody can be first on a sheet that is already closed. */
+.question.is-closed .cloud:empty::after { content: "No tags were added."; }
+
+.tag {
+  font: inherit;
+  font-weight: 500;
+  /* Never smaller than this, however unpopular the tag: everything on screen
+     has to stay legible from the back row. */
+  font-size: 1rem;
+  line-height: 1;
+  padding: .5rem .8rem;
+  min-height: 40px;
+  display: inline-flex;
+  align-items: center;
+  gap: .4rem;
+  border: 1.5px solid var(--line);
+  border-radius: 999px;
+  background: #fff;
+  color: var(--ink);
+  cursor: pointer;
+  transition: transform .12s ease, background .12s ease, border-color .12s ease;
+}
+
+.tag:hover:not(:disabled) { border-color: var(--accent); }
+
+.tag.is-mine {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  color: #10307c;
+  font-weight: 600;
+}
+
+.tag:disabled { cursor: default; }
+
+.tag .count {
+  font-size: .8em;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-faint);
+}
+
+.tag.is-mine .count { color: var(--accent); }
+
+/* A tag that just gained a vote pulses once, so a student who typed a word the
+   class already had can see where it landed instead of assuming it was lost. */
+@keyframes bump {
+  0%   { transform: scale(1); }
+  35%  { transform: scale(1.14); }
+  100% { transform: scale(1); }
+}
+
+.tag.just-bumped { animation: bump .35s ease; }
+
+@media (prefers-reduced-motion: reduce) {
+  .tag, .tag.just-bumped { animation: none; transition: none; }
+}
+
+/* ---------- connection + banners ---------- */
+
+.banner {
+  padding: .8rem 1rem;
+  border-radius: 10px;
+  margin-bottom: 1rem;
+  font-size: .95rem;
+}
+
+.banner-closed { background: #eceef2; color: var(--ink-soft); }
+.banner-offline { background: #fdecea; color: var(--danger); }
+.banner-draft { background: #fef3e2; color: #93500b; }
+
+/* ---------- sheet index ---------- */
+
+.sheet-list { list-style: none; margin: 0; padding: 0; }
+
+.sheet-list li { margin-bottom: .7rem; }
+
+.sheet-link {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1rem 1.1rem;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  text-decoration: none;
+  color: inherit;
+}
+
+.sheet-link:hover { border-color: var(--accent); }
+
+.sheet-link .title { font-weight: 600; }
+
+.sheet-link .slug {
+  display: block;
+  font-size: .85rem;
+  color: var(--ink-faint);
+  margin-top: .15rem;
+}
+
+.empty {
+  padding: 2rem 1rem;
+  text-align: center;
+  color: var(--ink-faint);
+}
+
+/* ---------- forms and buttons ---------- */
+
+.btn {
+  font: inherit;
+  font-weight: 600;
+  min-height: 44px;
+  padding: 0 1rem;
+  border-radius: 10px;
+  border: 1.5px solid var(--line);
+  background: #fff;
+  color: var(--ink);
+  cursor: pointer;
+}
+
+.btn:hover { border-color: var(--accent); }
+.btn-primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+.btn-danger  { color: var(--danger); border-color: #f2c9c5; }
+.btn:disabled { opacity: .5; cursor: not-allowed; }
+
+.btn-small { min-height: 36px; padding: 0 .7rem; font-size: .88rem; }
+
+.field { margin-bottom: .9rem; }
+
+.field label {
+  display: block;
+  font-weight: 600;
+  font-size: .9rem;
+  margin-bottom: .3rem;
+}
+
+.field input, .field textarea {
+  width: 100%;
+  font: inherit;
+  padding: .65rem .8rem;
+  border: 1.5px solid var(--line);
+  border-radius: 10px;
+}
+
+.field input:focus, .field textarea:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.row { display: flex; gap: .5rem; flex-wrap: wrap; align-items: center; }
+
+.panel {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 1.1rem;
+  margin-bottom: 1.25rem;
+  box-shadow: var(--shadow);
+}
+
+/* ---------- presenter, sized for a projector ---------- */
+
+body.presenter { font-size: 19px; }
+
+body.presenter .wrap { max-width: 1100px; }
+
+body.presenter .question h2 { font-size: 1.6rem; }
+body.presenter .question .desc { font-size: 1.05rem; }
+
+/* Counts are shown outright here: the instructor is reading distribution, not
+   browsing, and the numbers carry the discussion. */
+body.presenter .tag { font-size: 1.15rem; padding: .55rem .9rem; }
+body.presenter .tag .count { font-size: .85em; font-weight: 700; }
+
+.join {
+  display: flex;
+  gap: 1.5rem;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.join-url {
+  font-size: clamp(1.4rem, 3.4vw, 2.6rem);
+  font-weight: 700;
+  letter-spacing: -.01em;
+  word-break: break-all;
+  line-height: 1.15;
+}
+
+.join-hint { color: var(--ink-soft); margin: .3rem 0 0; }
+
+.join-qr {
+  flex: 0 0 auto;
+  width: 180px;
+  height: 180px;
+  background: #fff;
+  padding: 8px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+}
+
+.join-qr svg { width: 100%; height: 100%; display: block; }
+
+.stat {
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+}
+
+.stat-label { color: var(--ink-soft); font-weight: 400; font-size: .9rem; }
+
+.q-controls {
+  display: flex;
+  gap: .5rem;
+  flex-wrap: wrap;
+  margin: .8rem 0 .9rem;
+  padding-top: .8rem;
+  border-top: 1px solid var(--line);
+}
+
+/* The remove control sits on the pill itself so an unwelcome tag on a projected
+   screen can go in one tap, without wiping the whole question. */
+.tag-remove {
+  border: none;
+  background: none;
+  color: var(--ink-faint);
+  font-size: 1.1em;
+  line-height: 1;
+  padding: 0 0 0 .1em;
+  cursor: pointer;
+}
+
+.tag-remove:hover { color: var(--danger); }
+
+table.sheets { width: 100%; border-collapse: collapse; }
+
+table.sheets th, table.sheets td {
+  text-align: left;
+  padding: .7rem .6rem;
+  border-bottom: 1px solid var(--line);
+  vertical-align: middle;
+}
+
+table.sheets th { font-size: .85rem; text-transform: uppercase; color: var(--ink-soft); }
+
+table.sheets code { font-size: .95em; color: var(--ink-soft); }
+
+@media (max-width: 640px) {
+  .join-qr { width: 140px; height: 140px; }
+  table.sheets thead { display: none; }
+  table.sheets td { display: block; border: none; padding: .2rem .4rem; }
+  table.sheets tr {
+    display: block;
+    border-bottom: 1px solid var(--line);
+    padding: .7rem 0;
+  }
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px; height: 1px;
+  padding: 0; margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+/* ---------- freetext questions ---------- */
+
+.response-form { margin: .8rem 0 0; }
+
+.response-form textarea {
+  width: 100%;
+  padding: .7rem .8rem;
+  font: inherit;
+  line-height: 1.45;
+  color: var(--ink);
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  resize: vertical;
+}
+
+.response-form textarea:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.response-form textarea:disabled { background: #f1f2f5; color: var(--ink-faint); }
+
+.response-form-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: .6rem;
+  margin-top: .5rem;
+}
+
+.response-form-row button {
+  min-height: 44px;
+  padding: 0 1.2rem;
+  font: inherit;
+  font-weight: 600;
+  color: #fff;
+  background: var(--accent);
+  border: none;
+  border-radius: var(--radius);
+  cursor: pointer;
+}
+
+.response-form-row button:disabled { background: #b9bfcb; cursor: not-allowed; }
+
+.counter { font-size: .85rem; color: var(--ink-faint); font-variant-numeric: tabular-nums; }
+.counter.is-low { color: #93500b; }
+
+.feed-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: .6rem;
+  margin: 1.1rem 0 .5rem;
+}
+
+.sort-toggle { font-size: .82rem; }
+
+.feed { display: flex; flex-direction: column; gap: .5rem; }
+
+.feed:empty::after {
+  content: "No answers yet. Be the first.";
+  color: var(--ink-faint);
+  font-size: .95rem;
+}
+
+.question.is-closed .feed:empty::after { content: "Nobody answered this one."; }
+
+/* A response is a vote column and a body. The column is fixed width so the text
+   of every answer starts at the same place and the feed reads as a list. */
+.response {
+  display: flex;
+  gap: .7rem;
+  padding: .65rem .8rem;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+
+.response.just-bumped { animation: bump .35s ease; }
+
+.response-votes {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: .1rem;
+  flex: 0 0 2.2rem;
+}
+
+.response-text {
+  margin: 0;
+  align-self: center;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.response-score {
+  font-size: .9rem;
+  font-weight: 600;
+  color: var(--ink-soft);
+  font-variant-numeric: tabular-nums;
+}
+
+.response-score.is-positive { color: var(--live); }
+.response-score.is-negative { color: var(--danger); }
+
+.vote {
+  /* Tap targets, not glyphs: these sit next to each other on a phone and a
+     mis-tap here says the opposite of what the student meant. */
+  min-width: 34px;
+  min-height: 30px;
+  padding: 0;
+  font-size: .75rem;
+  line-height: 1;
+  color: var(--ink-faint);
+  background: none;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.vote:hover:not(:disabled) { background: #f1f2f5; color: var(--ink); }
+.vote:disabled { cursor: default; opacity: .45; }
+.vote-up.is-mine { color: var(--live); background: var(--live-soft); }
+.vote-down.is-mine { color: var(--danger); background: #fdecea; }
+
+/* ---------- clustered responses ---------- */
+
+.cluster { margin-bottom: .9rem; }
+
+.cluster-head {
+  margin: 0 0 .4rem;
+  font-size: .82rem;
+  font-weight: 700;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+}
+
+.cluster.is-leftover .cluster-head { color: var(--ink-faint); font-weight: 600; }
+
+.cluster-body { display: flex; flex-direction: column; gap: .5rem; }
+
+/* ---------- presenter control ---------- */
+
+.view-links { display: flex; flex-wrap: wrap; gap: .9rem; }
+
+.badge-type {
+  background: #eef0f4;
+  color: var(--ink-soft);
+  margin-bottom: .4rem;
+  display: inline-block;
+}
+
+.field select {
+  width: 100%;
+  min-height: 44px;
+  padding: 0 .6rem;
+  font: inherit;
+  color: var(--ink);
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+
+.field select:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+/* The presenter's copy of a feed is a reading list, not a voting surface, so it
+   trades the vote column for density - more answers visible while talking. */
+.feed-compact .response {
+  align-items: baseline;
+  gap: .6rem;
+  padding: .45rem .6rem;
+  font-size: .95rem;
+}
+
+.feed-compact .response-score {
+  flex: 0 0 2.2rem;
+  text-align: right;
+}
+
+.feed-compact .response-text { flex: 1 1 auto; align-self: baseline; }
+
+.response-theme {
+  flex: 0 0 auto;
+  padding: .1rem .5rem;
+  font-size: .74rem;
+  font-weight: 600;
+  letter-spacing: .03em;
+  text-transform: uppercase;
+  color: var(--accent);
+  background: var(--accent-soft);
+  border-radius: 999px;
+}
+
+/* ---------- live projection view ---------- */
+/* Dark, because a projector in a lit room throws far less glare with a dark
+   ground, and sized so the smallest thing on screen is legible from the back. */
+
+body.live {
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  background: #0b0d12;
+  color: #f3f5f9;
+}
+
+.live-wrap {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  height: 100dvh;
+  padding: 2.2vh 2.5vw;
+  gap: 1.2vh;
+}
+
+.live-head { flex: 0 0 auto; }
+
+.live-head h1 {
+  margin: 0;
+  font-size: clamp(1.8rem, 4.4vw, 4rem);
+  line-height: 1.08;
+  letter-spacing: -.02em;
+}
+
+.live-head p {
+  margin: .5rem 0 0;
+  font-size: clamp(1rem, 1.6vw, 1.6rem);
+  color: #9aa3b5;
+}
+
+.live-stage { position: relative; flex: 1 1 auto; min-height: 0; }
+
+.live-chart { position: absolute; inset: 0; }
+.chart-svg { display: block; width: 100%; height: 100%; overflow: visible; }
+
+.chart-svg .labels text { fill: #c6cddd; }
+.chart-svg .values text { fill: #ffffff; font-weight: 700; font-variant-numeric: tabular-nums; }
+
+/* The particle layer must never intercept a click, and must never be what the
+   chart is read through - it is an overlay, not a substitute. */
+.live-particles {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.live-cards {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 1.4vh;
+  overflow: hidden;
+}
+
+.live-cards::after {
+  content: attr(data-total);
+  color: #6c7688;
+  font-size: clamp(.9rem, 1.2vw, 1.2rem);
+  text-align: right;
+}
+
+.live-card {
+  display: flex;
+  align-items: baseline;
+  gap: 1.2rem;
+  padding: 1.1vh 1.4vw;
+  background: #151924;
+  border: 1px solid #232838;
+  border-radius: 14px;
+}
+
+.live-card-text { margin: 0; flex: 1 1 auto; line-height: 1.3; }
+
+.live-card-score {
+  flex: 0 0 auto;
+  font-size: clamp(1rem, 1.8vw, 1.8rem);
+  font-weight: 700;
+  color: #6c7688;
+  font-variant-numeric: tabular-nums;
+}
+
+.live-card-score.is-positive { color: #4ade80; }
+.live-card-score.is-negative { color: #f87171; }
+
+.live-idle {
+  flex: 1 1 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0;
+  font-size: clamp(1.1rem, 2vw, 2rem);
+  color: #4d5566;
+}
+
+.live-foot {
+  flex: 0 0 auto;
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  font-size: clamp(.85rem, 1.1vw, 1.1rem);
+  color: #6c7688;
+}
+
+/* ---------- dashboard ---------- */
+
+.dash-wrap { max-width: 1500px; margin: 0 auto; padding: 1rem 1.2rem 3rem; }
+
+.picker {
+  display: flex;
+  gap: .4rem;
+  overflow-x: auto;
+  padding-bottom: .6rem;
+  margin-bottom: 1rem;
+  scrollbar-width: thin;
+}
+
+.picker-tab {
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+  flex: 0 0 auto;
+  max-width: 22rem;
+  min-height: 42px;
+  padding: 0 .8rem;
+  font: inherit;
+  font-size: .9rem;
+  text-align: left;
+  color: var(--ink-soft);
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.picker-tab:hover { border-color: var(--accent); }
+
+.picker-tab.is-current {
+  color: var(--ink);
+  font-weight: 600;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-soft);
+}
+
+.picker-number {
+  display: grid;
+  place-items: center;
+  width: 22px; height: 22px;
+  font-size: .75rem;
+  font-weight: 700;
+  color: var(--accent);
+  background: var(--accent-soft);
+  border-radius: 50%;
+}
+
+.picker-kind { font-size: .72rem; text-transform: uppercase; color: var(--ink-faint); }
+
+/* Grid cells are tall enough that a chart in one is worth looking at; anything
+   that needs more than this is what click-to-maximise is for. */
+.panel-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+  gap: 1rem;
+}
+
+.panel-card {
+  display: flex;
+  flex-direction: column;
+  min-height: 320px;
+  padding: .9rem 1rem 1rem;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  cursor: zoom-in;
+}
+
+.panel-card:hover { border-color: var(--accent); }
+
+.panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: .6rem;
+}
+
+.panel-head h3 { margin: 0; font-size: 1rem; }
+
+.panel-expand {
+  min-width: 30px; min-height: 30px;
+  font-size: .95rem;
+  line-height: 1;
+  color: var(--ink-faint);
+  background: none;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.panel-expand:hover { color: var(--accent); background: var(--accent-soft); }
+
+.panel-hint { margin: .2rem 0 .7rem; font-size: .8rem; color: var(--ink-faint); }
+
+.panel-body { flex: 1 1 auto; min-height: 0; position: relative; overflow: auto; }
+
+.panel-body svg { display: block; }
+.panel-body .axis text { fill: var(--ink-faint); font-size: 10px; }
+.panel-body .axis path, .panel-body .axis line { stroke: var(--line); }
+.panel-body text.name { fill: var(--ink-soft); }
+.panel-body text.value { fill: var(--ink-faint); font-variant-numeric: tabular-nums; }
+.panel-body { color: var(--ink-faint); }
+
+.panel-empty {
+  display: grid;
+  place-items: center;
+  height: 100%;
+  margin: 0;
+  padding: 1rem;
+  text-align: center;
+  font-size: .9rem;
+  color: var(--ink-faint);
+}
+
+/* Maximise. The siblings are hidden rather than moved, so nothing reflows
+   underneath and restoring puts everything back exactly where it was. */
+.panel-grid.has-max { display: block; }
+.panel-grid.has-max .panel-card:not(.is-max) { display: none; }
+
+.panel-card.is-max {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  min-height: 0;
+  border-radius: 0;
+  cursor: zoom-out;
+  padding: 1.2rem 1.6rem 1.6rem;
+}
+
+.panel-card.is-max .panel-head h3 { font-size: 1.3rem; }
+
+/* ---------- dashboard panel internals ---------- */
+
+.theme-grid {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(200px, 1fr);
+  gap: .8rem;
+  height: 100%;
+  overflow-x: auto;
+}
+
+.theme-column {
+  display: flex;
+  flex-direction: column;
+  gap: .4rem;
+  padding-top: .3rem;
+  border-top: 3px solid var(--theme-colour, var(--accent));
+  overflow-y: auto;
+}
+
+.theme-column h4 {
+  margin: 0;
+  position: sticky;
+  top: 0;
+  padding: .2rem 0 .3rem;
+  background: var(--card);
+  font-size: .78rem;
+  text-transform: uppercase;
+  letter-spacing: .03em;
+  color: var(--ink-soft);
+}
+
+.theme-item {
+  margin: 0;
+  padding: .4rem .55rem;
+  font-size: .85rem;
+  line-height: 1.35;
+  color: var(--ink);
+  background: #f7f8fa;
+  border-radius: 8px;
+  overflow-wrap: anywhere;
+}
+
+.raw-list { display: flex; flex-direction: column; gap: .3rem; }
+
+.raw-row {
+  display: flex;
+  align-items: baseline;
+  gap: .6rem;
+  padding: .35rem .5rem;
+  font-size: .87rem;
+  border-radius: 8px;
+}
+
+.raw-row:nth-child(odd) { background: #f7f8fa; }
+
+.raw-score {
+  flex: 0 0 2.1rem;
+  text-align: right;
+  font-weight: 600;
+  color: var(--ink-faint);
+  font-variant-numeric: tabular-nums;
+}
+
+.raw-score.is-positive { color: var(--live); }
+.raw-score.is-negative { color: var(--danger); }
+
+.raw-dot { flex: 0 0 auto; width: 9px; height: 9px; border-radius: 50%; }
+.raw-text { flex: 1 1 auto; color: var(--ink); overflow-wrap: anywhere; }
+.raw-when { flex: 0 0 auto; color: var(--ink-faint); font-variant-numeric: tabular-nums; }
+
+.raw-theme {
+  flex: 0 0 auto;
+  padding: .05rem .45rem;
+  font-size: .7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  color: #fff;
+  background: var(--theme-colour, var(--ink-faint));
+  border-radius: 999px;
+}
