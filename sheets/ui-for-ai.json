@@ -1,0 +1,36 @@
+{
+  "slug": "ui-for-ai",
+  "title": "User Interfaces for AI",
+  "status": "draft",
+  "questions": [
+    {
+      "title": "Which AI tools did you use this week?",
+      "type": "tags",
+      "description": "Anything counts: ChatGPT, Copilot, Claude, Gemini, Cursor, Grammarly, Midjourney, an Ollama model, none."
+    },
+    {
+      "title": "Describe one moment an AI interface frustrated or misled you.",
+      "type": "freetext",
+      "description": "One or two sentences. What did you expect, and what happened instead?",
+      "clusterHint": "Where possible, name the interface failure rather than the product. Good theme names look like: \"no indication of confidence\", \"silently ignored my instruction\", \"could not tell what it can do\", \"lost context mid-task\", \"no way to undo\"."
+    },
+    {
+      "title": "Which of these is AI to you?",
+      "type": "tags",
+      "description": "Pick one: oracle / assistant / tool / colleague / threat / toy — or add your own.",
+      "options": [
+        "oracle",
+        "assistant",
+        "tool",
+        "colleague",
+        "threat",
+        "toy"
+      ]
+    },
+    {
+      "title": "Name a task where an interface should not use AI.",
+      "type": "freetext",
+      "description": "Be specific: what task, and why not."
+    }
+  ]
+}

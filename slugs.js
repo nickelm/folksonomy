@@ -36,7 +36,7 @@ export const RESERVED_SLUGS = new Set([
   // Added with the live view, the dashboard, and the /s /p /d URL aliases.
   'live', 'dashboard', 'vendor', 'live.html', 'live.js', 'sediment.js',
   'dashboard.html', 'dashboard.js', 'panels.js', 'viz.js', 'common.js',
-  'auth.js', 'notfound.html',
+  'auth.js', 'notfound.html', 'advance.js',
 ]);
 
 const SLUG_PATTERN = /^[a-z0-9][a-z0-9-]{1,38}[a-z0-9]$/;

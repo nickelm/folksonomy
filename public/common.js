@@ -147,6 +147,30 @@ export function responseVoteStore(slug) {
   };
 }
 
+/**
+ * Put a sheet's join address and QR code into the given elements.
+ *
+ * Two separate attempts on purpose: the address is the thing that must be on
+ * screen, and a failed QR fetch should not replace a good address with the
+ * fallback. Both endpoints are public.
+ */
+export async function loadJoinDetails(slug, { urlEl, qrEl }) {
+  const base = `/api/sheets/${encodeURIComponent(slug)}`;
+  try {
+    const { url } = await (await fetch(`${base}/join`)).json();
+    urlEl.textContent = url.replace(/^https?:\/\//, '');
+  } catch {
+    urlEl.textContent = `${location.host}/${encodeURIComponent(slug)}`;
+    return;
+  }
+  if (!qrEl) return;
+  try {
+    qrEl.innerHTML = await (await fetch(`${base}/qr.svg`)).text();
+  } catch {
+    /* the address is still there to read out */
+  }
+}
+
 export function escapeHtml(text) {
   return String(text ?? '')
     .replace(/&/g, '&amp;')

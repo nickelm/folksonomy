@@ -5,7 +5,7 @@
 // unreadable on a projector and impossible to point at while talking.
 
 import { api, checkSession, getToken, login } from '/auth.js';
-import { connect } from '/common.js';
+import { connect, loadJoinDetails } from '/common.js';
 
 const slug = decodeURIComponent(location.pathname.replace(/^\/presenter\//, ''));
 
@@ -79,7 +79,7 @@ async function start() {
     document.getElementById(id).href = `/${prefix}${encodeURIComponent(slug)}`;
   }
 
-  await loadJoinDetails();
+  await loadJoinDetails(slug, { urlEl: joinUrlEl, qrEl });
 
   socket = connect({
     slug,
@@ -89,17 +89,6 @@ async function start() {
       if (status === 'online') socket?.send({ type: 'authenticate', token: getToken() });
     },
   });
-}
-
-async function loadJoinDetails() {
-  try {
-    const { url } = await (await fetch(`/api/sheets/${slug}/join`)).json();
-    joinUrlEl.textContent = url.replace(/^https?:\/\//, '');
-    const svg = await (await fetch(`/api/sheets/${slug}/qr.svg`)).text();
-    qrEl.innerHTML = svg;
-  } catch {
-    joinUrlEl.textContent = `${location.host}/${slug}`;
-  }
 }
 
 // --------------------------------------------------------------------------

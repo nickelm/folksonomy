@@ -102,6 +102,8 @@ try {
     ANSWERS.every((text) => calls[0].messages[0].content.includes(text)));
   check('the question text was sent',
     calls[0].messages[0].content.includes('Why might HCI be hard?'));
+  check('no hint means no guidance line',
+    !calls[0].messages[0].content.includes('Guidance for naming the themes'));
 
   const first = labels();
   check('labels are written back',
@@ -194,6 +196,29 @@ try {
   check('under four answers is skipped', thinResult.reason === 'too_few_responses');
   check('and costs no API call', tooFewCalls.length === 0);
   deleteSheet(thin.id);
+
+  // A per-question hint steers the theme names - "name the failure, not the
+  // product" - and must reach the model verbatim, but only on the question
+  // that carries it.
+  const hinted = createSheet({ title: 'cluster hint scratch', status: 'live' });
+  const hintQ = addQuestion(hinted.id, {
+    title: 'Describe one moment an AI interface frustrated you.',
+    type: 'freetext',
+    clusterHint: 'Name the interface failure rather than the product.',
+  });
+  check('the hint is stored on the question',
+    hintQ.cluster_hint === 'Name the interface failure rather than the product.');
+  setActiveQuestion(hinted.id, hintQ.id);
+  for (const [i, text] of ['a', 'b', 'c', 'd'].entries()) {
+    recordResponse({ questionId: hintQ.id, rawText: `answer ${text}`, sessionId: `h${i}` });
+  }
+  const hintedRun = make();
+  const hintedCalls = stub(hintedRun, () => ({ themes: [] }));
+  await hintedRun.run(hintQ.id);
+  check('the hint is sent with the question',
+    hintedCalls.length === 1 && hintedCalls[0].messages[0].content
+      .includes('Guidance for naming the themes: Name the interface failure rather than the product.'));
+  deleteSheet(hinted.id);
 
   const keyless = new Clusterer({ apiKey: '', onChange: () => {}, log: () => {} });
   check('no key means disabled', keyless.enabled === false);

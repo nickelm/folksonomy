@@ -9,6 +9,7 @@
 // tokens that sediment into those bars. If the canvas were removed the chart
 // would still be complete and correct, which is deliberate.
 
+import { createAdvance } from '/advance.js';
 import { connect } from '/common.js';
 import { createSediment } from '/sediment.js';
 import { colourScale, fitLabel, prefersReducedMotion, sqrtScale, topN } from '/viz.js';
@@ -415,22 +416,35 @@ if (animate) {
 }
 
 let latest = null;
+let socket = null;
 
-connect({
+// The presenter's Next button sits in the footer, for a signed-in lectern tab.
+// Everyone else sees a faint sign-in link there and nothing more.
+const advance = createAdvance({
+  host: document.getElementById('advance'),
+  send: (msg) => socket?.send(msg) ?? false,
+});
+
+socket = connect({
   slug,
   role: 'live',
   onState(state) {
     latest = state;
     render(state);
+    advance.update(state);
   },
   onSubmission,
   onStatus(status) {
+    if (status === 'online') advance.online();
     // A reconnect means we may have missed arrivals, so nothing in the air can
     // be trusted to correspond to anything. Start the accounting over.
     if (status === 'offline') {
       clearHolds();
       sediment?.stop();
     }
+  },
+  onError(reason) {
+    advance.error(reason);
   },
 });
 

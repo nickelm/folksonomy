@@ -103,7 +103,15 @@ try {
   // Someone else floods the room with tags while our student types a word.
   // One socket per noise-maker: the per-session throttle is per connection, so
   // flooding from a single socket would be silently swallowed and prove nothing.
+  //
+  // Real, unrelated words rather than noise-0..9: with an API key set, Haiku
+  // folds a run of near-identical labels into one within seconds, and the
+  // checks below need the board to hold still.
   const word = 'affordance';
+  const flood = [
+    'apple', 'bridge', 'cactus', 'dragon', 'ember',
+    'falcon', 'garnet', 'harbor', 'island', 'jungle',
+  ];
   const noise = await Promise.all([...word].map(async () => {
     const ws = new WebSocket(`${BASE.replace('http', 'ws')}/ws?slug=${slug}`);
     await new Promise((r) => ws.on('open', r));
@@ -119,7 +127,7 @@ try {
     noise[flooded].send(JSON.stringify({
       type: 'submit_tag',
       questionId: qa.id,
-      tag: `noise-${flooded}`,
+      tag: flood[flooded],
       sessionId: `noise-${flooded}`,
     }));
     flooded += 1;
@@ -135,6 +143,80 @@ try {
     (await page.locator('.question.is-active .tag').count()) > 3);
 
   for (const ws of noise) ws.close();
+
+  // ---- suggestions while typing ----
+
+  // Give one tag a second vote so the ordering has something to show.
+  const extra = new WebSocket(`${BASE.replace('http', 'ws')}/ws?slug=${slug}`);
+  await new Promise((r) => extra.on('open', r));
+  extra.send(JSON.stringify({
+    type: 'vote_tag', questionId: qa.id, tag: 'apple', sessionId: 'extra-1',
+  }));
+  await sleep(500);
+  extra.close();
+
+  const suggest = page.locator('.question.is-active .tag-suggest');
+  const rows = page.locator('.question.is-active .tag-suggest-row');
+  const countOf = async (label) => Number(
+    await page.locator(`.question.is-active .tag:has(.label:text-is("${label}")) .count`)
+      .first().innerText(),
+  );
+
+  // "a" is in most of the flood words and in "usability"; only "apple" starts
+  // with it, and it also carries the extra vote, so it must come first.
+  await input.fill('a');
+  await page.waitForSelector('.question.is-active .tag-suggest:not([hidden])');
+  check('typing offers matching tags from the board',
+    await rows.count() === 5, `${await rows.count()} rows`);
+  check('the most voted match comes first',
+    (await rows.first().locator('.label').innerText()) === 'apple');
+  const counts = (await rows.locator('.count').allInnerTexts()).map(Number);
+  check('suggestions are ordered by votes',
+    counts.every((c, i) => i === 0 || c <= counts[i - 1]), counts.join(','));
+  check('the input announces the open list',
+    await input.getAttribute('aria-expanded') === 'true');
+
+  await rows.first().click();
+  await sleep(600);
+  check('tapping a suggestion votes for it', await countOf('apple') === 3,
+    `count ${await countOf('apple')}`);
+  check('and marks it as mine',
+    await page.locator('.question.is-active .tag:has(.label:text-is("apple")).is-mine').count() === 1);
+  check('the input is cleared after picking', await input.inputValue() === '');
+  check('the list closes after picking', await suggest.isHidden());
+  check('focus stays in the input after a tap',
+    await page.evaluate(() => document.activeElement?.tagName) === 'INPUT');
+
+  // Keyboard: arrow down onto the top row, Enter votes for it.
+  await page.keyboard.type('drag');
+  await page.waitForSelector('.question.is-active .tag-suggest:not([hidden])');
+  await page.keyboard.press('ArrowDown');
+  check('arrow keys highlight a row',
+    await page.locator('.question.is-active .tag-suggest-row.is-active').count() === 1);
+  check('the highlight is exposed to assistive tech',
+    Boolean(await input.getAttribute('aria-activedescendant')));
+  await page.keyboard.press('Enter');
+  await sleep(600);
+  check('Enter on a highlighted row votes for it', await countOf('dragon') === 2,
+    `count ${await countOf('dragon')}`);
+  check('and creates nothing new',
+    await page.locator('.question.is-active .tag').count() === 11);
+
+  // A word nobody has used: no list, and Enter still adds it.
+  await input.fill('brand new');
+  await sleep(150);
+  check('an unmatched word shows no list', await suggest.isHidden());
+  await page.keyboard.press('Enter');
+  await page.waitForSelector('.question.is-active .tag:has(.label:text-is("brand new"))');
+  check('Enter with no highlight still adds the typed tag', true);
+  check('the input is cleared after adding', await input.inputValue() === '');
+
+  // Escape closes the list and leaves the text alone.
+  await input.fill('a');
+  await page.waitForSelector('.question.is-active .tag-suggest:not([hidden])');
+  await page.keyboard.press('Escape');
+  check('Escape closes the list', await suggest.isHidden());
+  check('without touching what was typed', await input.inputValue() === 'a');
 
   // ---- voting by tapping ----
 

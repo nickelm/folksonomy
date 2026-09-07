@@ -77,17 +77,67 @@ function buildTagCard(question) {
   const cloud = document.createElement('div');
   cloud.className = 'cloud';
 
-  root.append(statusLine, heading, desc, form, hint, locked, cloud);
+  // Suggestions from the board appear here while the student types. A listbox
+  // driven from the input (combobox pattern): the rows never take focus.
+  const suggest = document.createElement('div');
+  suggest.className = 'tag-suggest';
+  suggest.id = `suggest-${question.id}`;
+  suggest.setAttribute('role', 'listbox');
+  suggest.setAttribute('aria-label', 'Tags already on the board');
+  suggest.hidden = true;
+
+  input.setAttribute('role', 'combobox');
+  input.setAttribute('aria-autocomplete', 'list');
+  input.setAttribute('aria-expanded', 'false');
+  input.setAttribute('aria-controls', suggest.id);
+
+  root.append(statusLine, heading, desc, form, suggest, hint, locked, cloud);
 
   form.addEventListener('submit', (event) => {
     event.preventDefault();
     submit(question.id, input, hint);
   });
 
+  input.addEventListener('input', () => renderSuggest(card, questionFor(question.id)));
+
+  input.addEventListener('keydown', (event) => {
+    if (event.isComposing) return;
+    const open = !suggest.hidden;
+
+    if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+      if (!open) renderSuggest(card, questionFor(question.id));
+      if (suggest.hidden) return;
+      event.preventDefault();
+      moveSuggest(card, event.key === 'ArrowDown' ? 1 : -1);
+    } else if (event.key === 'Enter') {
+      // With a row highlighted, Enter votes for it. With none, the form submits
+      // the typed text exactly as it always has.
+      if (open && card.suggestActiveId !== null) {
+        event.preventDefault();
+        const row = card.suggestRows.get(card.suggestActiveId);
+        if (row) pickSuggest(card, question.id, row.dataset.label);
+      }
+    } else if (event.key === 'Escape' && open) {
+      event.preventDefault();
+      closeSuggest(card);
+    }
+  });
+
+  // A tap on a row must not blur the input: on a phone that drops the keyboard,
+  // and the next thing the student wants to do is type again.
+  suggest.addEventListener('mousedown', (event) => event.preventDefault());
+  suggest.addEventListener('click', (event) => {
+    const row = event.target.closest('[role="option"]');
+    if (row) pickSuggest(card, question.id, row.dataset.label);
+  });
+
   const card = {
     type: 'tags',
     root, heading, desc, statusLine, form, input, button, hint, locked, cloud,
     pills: new Map(),
+    suggest,
+    suggestRows: new Map(),
+    suggestActiveId: null,
   };
   cards.set(question.id, card);
   return card;
@@ -319,6 +369,146 @@ function buildFreetextCard(question) {
 }
 
 // --------------------------------------------------------------------------
+// Suggestions (tags questions)
+// --------------------------------------------------------------------------
+//
+// While a student types, the tags already on the board that contain what they
+// have typed so far are listed under the input, most voted first. The point is
+// vocabulary convergence: seeing "usability 12" under a half-typed word tells
+// the student the class already has it, and one tap agrees with it rather than
+// putting "useability" up next to it. Typing a fresh word and pressing Add
+// works exactly as before - the list is an offer, not a gate.
+//
+// Same rules as the cloud: rows are created once, keyed by tag id, mutated in
+// place and reordered by moving them. The input is only ever read.
+
+const MAX_SUGGESTIONS = 5;
+
+/** The server's normalizeTag, minus the length check. */
+function normalizeQuery(text) {
+  return String(text ?? '').trim().replace(/\s+/g, ' ').toLowerCase();
+}
+
+/**
+ * Tags containing `query`: prefix matches first, then by votes, then the order
+ * the server sent (itself by votes). Labels are stored normalized, so only the
+ * query needs folding.
+ */
+function matchTags(tags, query, limit = MAX_SUGGESTIONS) {
+  const q = normalizeQuery(query);
+  if (!q) return [];
+  return tags
+    .map((tag, index) => ({ tag, index, at: tag.label.indexOf(q) }))
+    .filter((hit) => hit.at >= 0)
+    .sort((a, b) =>
+      (a.at === 0 ? 0 : 1) - (b.at === 0 ? 0 : 1)
+      || b.tag.count - a.tag.count
+      || a.index - b.index)
+    .slice(0, limit)
+    .map((hit) => hit.tag);
+}
+
+function questionFor(questionId) {
+  return latest?.questions.find((q) => q.id === questionId) || null;
+}
+
+function renderSuggest(card, question) {
+  if (card.input.disabled || !question?.tags) {
+    closeSuggest(card);
+    return;
+  }
+  const matches = matchTags(question.tags, card.input.value);
+  if (matches.length === 0) {
+    closeSuggest(card);
+    return;
+  }
+
+  const seen = new Set();
+  matches.forEach((tag, index) => {
+    seen.add(tag.id);
+    let row = card.suggestRows.get(tag.id);
+
+    if (!row) {
+      row = document.createElement('div');
+      row.className = 'tag-suggest-row';
+      row.id = `${card.suggest.id}-${tag.id}`;
+      row.setAttribute('role', 'option');
+      row._tagId = tag.id;
+
+      const text = document.createElement('span');
+      text.className = 'label';
+      const count = document.createElement('span');
+      count.className = 'count';
+      row.append(text, count);
+
+      card.suggestRows.set(tag.id, row);
+      card.suggest.append(row);
+    }
+
+    row.dataset.label = tag.label;
+    row.querySelector('.label').textContent = tag.label;
+    row.querySelector('.count').textContent = tag.count;
+    row.classList.toggle('is-mine', voted.has(question.id, tag.label));
+
+    const atIndex = card.suggest.children[index];
+    if (atIndex !== row) card.suggest.insertBefore(row, atIndex || null);
+  });
+
+  for (const [tagId, row] of card.suggestRows) {
+    if (!seen.has(tagId)) {
+      row.remove();
+      card.suggestRows.delete(tagId);
+    }
+  }
+
+  // A highlighted tag that was merged away between broadcasts must not leave
+  // Enter voting for whatever moved into its slot.
+  if (card.suggestActiveId !== null && !seen.has(card.suggestActiveId)) {
+    card.suggestActiveId = null;
+  }
+  applySuggestActive(card);
+
+  card.suggest.hidden = false;
+  card.input.setAttribute('aria-expanded', 'true');
+}
+
+function applySuggestActive(card) {
+  let activeRow = null;
+  for (const [tagId, row] of card.suggestRows) {
+    const active = tagId === card.suggestActiveId;
+    row.classList.toggle('is-active', active);
+    row.setAttribute('aria-selected', String(active));
+    if (active) activeRow = row;
+  }
+  if (activeRow) card.input.setAttribute('aria-activedescendant', activeRow.id);
+  else card.input.removeAttribute('aria-activedescendant');
+}
+
+function closeSuggest(card) {
+  if (!card?.suggest) return;
+  card.suggest.hidden = true;
+  card.suggestActiveId = null;
+  card.input.setAttribute('aria-expanded', 'false');
+  card.input.removeAttribute('aria-activedescendant');
+}
+
+/** Move the highlight. Index -1 is "what I typed", so Up from the top row returns to it. */
+function moveSuggest(card, delta) {
+  const ids = [...card.suggest.children].map((row) => row._tagId);
+  const index = ids.indexOf(card.suggestActiveId);
+  const next = Math.max(-1, Math.min(ids.length - 1, index + delta));
+  card.suggestActiveId = next === -1 ? null : ids[next];
+  applySuggestActive(card);
+}
+
+function pickSuggest(card, questionId, label) {
+  if (!vote(questionId, label, card.hint)) return;
+  card.input.value = '';
+  closeSuggest(card);
+  showHint(card.hint, `Voted for "${label}".`);
+}
+
+// --------------------------------------------------------------------------
 // Sending
 // --------------------------------------------------------------------------
 
@@ -336,8 +526,9 @@ function submit(questionId, input, hint) {
 
   // Record the vote optimistically so the pill reads as mine the moment the
   // broadcast lands, rather than a beat later.
-  voted.add(questionId, value.toLowerCase().replace(/\s+/g, ' '));
+  voted.add(questionId, normalizeQuery(value));
   input.value = '';
+  closeSuggest(cards.get(questionId));
   showHint(hint, 'Added.');
 }
 
@@ -345,9 +536,10 @@ function vote(questionId, label, hint) {
   const sent = socket?.send({ type: 'vote_tag', questionId, tag: label, sessionId });
   if (!sent) {
     showHint(hint, 'Not connected - reconnecting...', true);
-    return;
+    return false;
   }
   voted.add(questionId, label);
+  return true;
 }
 
 function select(questionId, label, hint) {
@@ -748,6 +940,10 @@ function render(state) {
       card.locked.hidden = revealed;
       card.cloud.hidden = !revealed;
       if (revealed) renderCloud(card, question, interactive);
+      // An open list follows the board: counts and order stay current, and a
+      // tag merged away disappears from it. The input itself is left alone.
+      if (!interactive) closeSuggest(card);
+      else if (!card.suggest.hidden) renderSuggest(card, question);
     }
   }
 

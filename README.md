@@ -11,8 +11,10 @@ the URL keeps working as a read-only record students can revisit weeks later.
 Questions come in three kinds:
 
 - **tags** - a word cloud the class builds together. Type a tag or tap someone
-  else's to vote for it. Haiku folds spellings and synonyms together as they
-  arrive. Can start with words already on the board.
+  else's to vote for it. While you type, tags already on the board that contain
+  what you have typed are offered underneath, most voted first; tapping one
+  votes for it, and Enter still adds your own word. Haiku folds spellings and
+  synonyms together as they arrive. Can start with words already on the board.
 - **freetext** - a sentence or two, capped at 280 characters, which everyone else
   can up- or down-vote. Afterwards Haiku groups the answers into named themes.
 - **choice** - a fixed ballot. Everyone picks exactly one option; changing your
@@ -100,6 +102,12 @@ Drop a JSON file in `sheets/`:
 ```
 
 `type` is `tags` (the default), `freetext`, or `choice`.
+
+A **freetext** question can also carry a `clusterHint`: a sentence or two appended
+to the clustering prompt for that question only, steering how Haiku names the
+themes. For example `"Name the interface failure rather than the product."`
+turns "ChatGPT problems" into "no indication of confidence". The same field is
+accepted by the questions API as `clusterHint`. See `sheets/ui-for-ai.json`.
 
 `options` means two different things, deliberately:
 
@@ -192,6 +200,12 @@ hold anything back, and their counts appear immediately.
 Set `prefers-reduced-motion` and the canvas is skipped entirely; the bar chart is
 complete on its own.
 
+The footer carries a faint "Presenter? Sign in" link. Sign in there (or open the
+live view from a tab that already holds the presenter session) and a **Next**
+button appears that opens the next question in order - **N** or the right arrow
+does the same. At the last question it reads **Stop**. Nobody else sees more than
+the link.
+
 ## The dashboard
 
 `/d/<slug>` is six panels over one question, with a selector at the top. Click any
@@ -206,6 +220,12 @@ panel to fill the viewport, Escape to go back.
 5. **How the vocabulary formed** - when each tag first appeared and how it
    accumulated.
 6. **Raw responses** - unaggregated, score-sorted for freetext.
+
+Above the panels sit the join address and QR code, so the dashboard can be the
+one screen on the projector. The QR code disappears once the sheet is closed; the
+address stays, because that is where the record lives. The same presenter
+**Next** control as on the live view sits beside them, and the selector follows
+the active question whenever it changes, from here or from the console.
 
 One colour scale is shared across all six, keyed on the label, so a tag is the same
 colour everywhere - including on the live view next to it.
@@ -240,6 +260,22 @@ sudo npm install -g pm2
 pm2 start server.js --name folksonomy
 pm2 save && pm2 startup     # then run the command it prints
 ```
+
+### Updating a running droplet
+
+After pushing changes to the repository:
+
+```bash
+cd /opt/folksonomy
+git pull
+npm ci --omit=dev           # only needed when package.json changed
+pm2 restart folksonomy
+```
+
+A pull leaves `data/` and `.env` alone - both are ignored by git. Any new file
+in `sheets/` is seeded when the server comes back up. If the server was started
+with `npm start` rather than pm2, stop it and start it again instead of the last
+line.
 
 ### Plain HTTP is fine here, with one caveat
 

@@ -255,6 +255,14 @@ try {
   await dash.goto(`${BASE}/d/${slug}`);
   await dash.waitForSelector('.panel-card');
 
+  await dash.waitForSelector('.join-qr svg');
+  check('the dashboard shows the join address',
+    (await dash.locator('.join-url').innerText()).includes(slug));
+  check('and the QR code', await dash.locator('.join-qr svg').count() === 1);
+  check('no presenter control without a token',
+    await dash.locator('.advance-next:visible').count() === 0);
+  check('but a way to sign in', await dash.locator('.advance-signin:visible').count() === 1);
+
   check('d3-cloud loaded from /vendor',
     await dash.evaluate(() => typeof window.d3?.layout?.cloud === 'function'));
   check('all six panels mount', await dash.locator('.panel-card').count() === 6);
@@ -401,6 +409,71 @@ try {
   check('the raw feed switches to answers', freeRaw.includes('People are unpredictable'));
   check('co-occurrence steps aside on freetext',
     (await dash.locator('[data-panel=cooccurrence]').innerText()).includes('tag questions'));
+
+  // ---- the presenter's Next, from the dashboard ----
+  // At this point qTags is active and the picker is on qFree.
+
+  const activeId = async () => {
+    const { questions: qs } = await (await fetch(`${BASE}/api/sheets/${slug}/questions`, {
+      headers: auth,
+    })).json();
+    return qs.find((q) => q.active)?.id ?? null;
+  };
+
+  await dash.locator('.advance-signin').click();
+  await dash.fill('.advance-password', PASSWORD);
+  await dash.keyboard.press('Enter');
+  await dash.waitForSelector('.advance-next:visible');
+  check('signing in reveals Next', true);
+  check('Next says what it will open',
+    (await dash.locator('.advance-upcoming').innerText()).includes('Why might HCI be hard?'));
+
+  await dash.locator('.advance-next').click();
+  check('Next opens the question after the active one',
+    await until(async () => (await activeId()) === qFree.id) === true);
+
+  await dash.locator('.advance-next').click();
+  check('and again the one after that',
+    await until(async () => (await activeId()) === qFresh.id) === true);
+  const followed = await until(async () => dash.evaluate(() => {
+    const tabs = [...document.querySelectorAll('.picker-tab')];
+    return tabs[2]?.classList.contains('is-current');
+  }));
+  check('the picker follows the active question', followed === true);
+  check('at the last question the button stops instead',
+    await until(async () => (await dash.locator('.advance-next').innerText()) === 'Stop') === true);
+
+  await dash.keyboard.press('n');
+  check('the N key ends the last question',
+    await until(async () => (await activeId()) === null) === true);
+  check('and offers the first one again',
+    await until(async () => (await dash.locator('.advance-upcoming').innerText())
+      .includes('What makes an interface bad?')) === true);
+
+  // ---- and from the live view, in a tab that already holds a token ----
+
+  const lectern = await browser.newContext({ viewport: { width: 1280, height: 720 } });
+  await lectern.addInitScript(
+    (t) => sessionStorage.setItem('folksonomy.presenterToken', t), token,
+  );
+  const lecternLive = await lectern.newPage();
+  const lecternErrors = [];
+  lecternLive.on('pageerror', (err) => lecternErrors.push(err.message));
+  await lecternLive.goto(`${BASE}/live/${slug}`);
+  await lecternLive.waitForSelector('.advance-next:visible');
+  check('a tab holding a presenter token gets Next on the live view', true);
+
+  await lecternLive.keyboard.press('ArrowRight');
+  check('the right arrow opens the first question from the live view',
+    await until(async () => (await activeId()) === qTags.id) === true);
+  await lecternLive.waitForSelector('#stage:visible');
+  check('and the projector shows it',
+    (await lecternLive.locator('#q-title').innerText()).includes('What makes an interface bad?'));
+  check('the plain live view still shows only the sign-in link',
+    await live.locator('.advance-next:visible').count() === 0
+    && await live.locator('.advance-signin').count() === 1);
+  check('the lectern live view logged no errors',
+    lecternErrors.length === 0, lecternErrors.join(' | '));
 
   await dash.screenshot({ path: 'scripts/shot-dashboard.png', fullPage: true });
 

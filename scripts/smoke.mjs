@@ -74,7 +74,9 @@ const wrong = await api('/api/presenter/login', {
 check('wrong password refused', wrong.status === 401);
 
 const { body: all } = await api('/api/sheets', {}, token);
-const slug = all.sheets[0].slug;
+// The starter sheet is the one these checks are written against. Other seeded
+// files may sit alongside it, so find it by slug rather than taking the first row.
+const slug = (all.sheets.find((s) => s.slug === 'intro') || all.sheets[0]).slug;
 
 await api(`/api/sheets/${slug}/status`, {
   method: 'POST', body: JSON.stringify({ status: 'live' }),

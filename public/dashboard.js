@@ -8,13 +8,18 @@
 // - co-occurrence, vote timing - come from a REST endpoint on a slow poll: they
 // are expensive to compute and nobody is watching them change second to second.
 
-import { connect } from '/common.js';
+import { createAdvance } from '/advance.js';
+import { connect, loadJoinDetails } from '/common.js';
 import { PANELS, coloursFor } from '/panels.js';
 
 const slug = decodeURIComponent(location.pathname.replace(/^\/d\//, ''));
 
 const titleEl = document.getElementById('sheet-title');
 const subEl = document.getElementById('sheet-sub');
+const joinUrlEl = document.getElementById('join-url');
+const joinHintEl = document.getElementById('join-hint');
+const qrEl = document.getElementById('qr');
+const advanceHost = document.getElementById('advance');
 const pickerEl = document.getElementById('picker');
 const gridEl = document.getElementById('grid');
 const emptyEl = document.getElementById('empty');
@@ -34,15 +39,40 @@ let maximised = null;
 // Which question we are looking at
 // --------------------------------------------------------------------------
 
-/** Questions with something to show. An unrevealed one carries no data at all. */
+/**
+ * Questions with something to show.
+ *
+ * Filtered on `revealed`, not on whether data came along. Once a presenter has
+ * signed in on this page, the socket carries the presenter payload, which
+ * includes tags and answers for questions the class has not seen - and this
+ * page may be on the projector.
+ */
 function available() {
   if (!state) return [];
-  return state.questions.filter((q) => q.tags || q.responses);
+  return state.questions.filter((q) => q.revealed);
 }
 
 function current() {
   const list = available();
   return list.find((q) => q.id === selectedId) || list[0] || null;
+}
+
+function selectQuestion(id) {
+  if (selectedId !== id) {
+    selectedId = id;
+    // A different question is different data in every panel: throw the DOM
+    // away rather than transition one question's chart into another's.
+    for (const entry of mounted.values()) {
+      clearTimeout(entry.timer);
+      entry.root.remove();
+    }
+    mounted.clear();
+  }
+  // Repaint the tabs here too. Waiting for the next broadcast would leave
+  // the highlight on the old question, and on a quiet sheet there may not
+  // be a next broadcast for minutes.
+  renderPicker();
+  renderAll();
 }
 
 function renderPicker() {
@@ -71,20 +101,7 @@ function renderPicker() {
 
     button.append(number, label, kind);
     button.addEventListener('click', () => {
-      if (selectedId === q.id) return;
-      selectedId = q.id;
-      // A different question is different data in every panel: throw the DOM
-      // away rather than transition one question's chart into another's.
-      for (const entry of mounted.values()) {
-        clearTimeout(entry.timer);
-        entry.root.remove();
-      }
-      mounted.clear();
-      // Repaint the tabs here too. Waiting for the next broadcast would leave
-      // the highlight on the old question, and on a quiet sheet there may not
-      // be a next broadcast for minutes.
-      renderPicker();
-      renderAll();
+      if (selectedId !== q.id) selectQuestion(q.id);
     });
 
     pickerEl.append(button);
@@ -246,20 +263,54 @@ async function loadAnalytics() {
   }
 }
 
-connect({
+let socket = null;
+
+const advance = createAdvance({
+  host: advanceHost,
+  send: (msg) => socket?.send(msg) ?? false,
+});
+
+socket = connect({
   slug,
   onState(next) {
+    const previousActive = state ? state.activeQuestionId : undefined;
     state = next;
     titleEl.textContent = next.sheet.title;
     document.title = `${next.sheet.title} - dashboard`;
 
+    const closed = next.sheet.status === 'closed';
     const badge = next.sheet.status === 'live' ? 'Live now' : next.sheet.status;
     subEl.textContent = `${badge} · ${next.connectedCount} connected`;
 
-    renderPicker();
-    renderAll();
+    // The address stays: it is where the record lives. The QR code is an
+    // invitation to join, and a closed sheet takes nobody in.
+    qrEl.hidden = closed;
+    joinHintEl.textContent = closed
+      ? 'This sheet is closed. The address stays as the record.'
+      : 'Open this address on your phone, or scan the code.';
+
+    advance.update(next);
+
+    // Follow the presenter: when the active question moves, so does the view.
+    // Only on a change, not on first load - somebody opening the dashboard
+    // afterwards to browse should land on the first question, not the last.
+    const activeMoved = previousActive !== undefined
+      && next.activeQuestionId != null
+      && next.activeQuestionId !== previousActive;
+    if (activeMoved) selectQuestion(next.activeQuestionId);
+    else {
+      renderPicker();
+      renderAll();
+    }
+  },
+  onStatus(status) {
+    if (status === 'online') advance.online();
+  },
+  onError(reason) {
+    advance.error(reason);
   },
 });
 
+loadJoinDetails(slug, { urlEl: joinUrlEl, qrEl });
 loadAnalytics();
 setInterval(loadAnalytics, ANALYTICS_INTERVAL_MS);

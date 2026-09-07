@@ -137,6 +137,10 @@ function addColumnIfMissing(table, column, ddl) {
 
 addColumnIfMissing('questions', 'type', "type TEXT NOT NULL DEFAULT 'tags'");
 addColumnIfMissing('tags', 'seeded', 'seeded INTEGER NOT NULL DEFAULT 0');
+// A per-question steer for theme clustering: extra guidance appended to the
+// clustering prompt, such as "name the interface failure, not the product".
+// Only freetext questions use it; it is harmless on the others.
+addColumnIfMissing('questions', 'cluster_hint', "cluster_hint TEXT NOT NULL DEFAULT ''");
 
 /**
  * Fold a raw submission into its canonical stored form, or return null if it is
@@ -247,11 +251,13 @@ export function cloneSheet(sourceSheetId, title) {
     const source = getSheetById(sourceSheetId);
     const sheet = createSheet({ title: title || `${source.title} (copy)` });
     const insert = db.prepare(`
-      INSERT INTO questions (sheet_id, position, title, description, type)
-      VALUES (?, ?, ?, ?, ?)
+      INSERT INTO questions (sheet_id, position, title, description, type, cluster_hint)
+      VALUES (?, ?, ?, ?, ?, ?)
     `);
     for (const q of listQuestions(sourceSheetId)) {
-      const info = insert.run(sheet.id, q.position, q.title, q.description, q.type);
+      const info = insert.run(
+        sheet.id, q.position, q.title, q.description, q.type, q.cluster_hint ?? '',
+      );
       // Seeded options are part of the question, not part of the answers, so a
       // clone starts with them and with nothing else: a cloned choice question
       // needs its ballot, and last year's starting words are worth keeping,
@@ -291,16 +297,18 @@ export function getQuestion(questionId) {
  *
  * Options carry no votes. They exist, at zero, until somebody picks one.
  */
-export function addQuestion(sheetId, { title, description = '', type = 'tags', options = [] }) {
+export function addQuestion(sheetId, {
+  title, description = '', type = 'tags', options = [], clusterHint = '',
+}) {
   return db.transaction(() => {
     const next = db.prepare(
       'SELECT COALESCE(MAX(position), 0) + 1 AS pos FROM questions WHERE sheet_id = ?',
     ).get(sheetId).pos;
 
     const info = db.prepare(`
-      INSERT INTO questions (sheet_id, position, title, description, type)
-      VALUES (?, ?, ?, ?, ?)
-    `).run(sheetId, next, title, description, normalizeQuestionType(type));
+      INSERT INTO questions (sheet_id, position, title, description, type, cluster_hint)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `).run(sheetId, next, title, description, normalizeQuestionType(type), clusterHint || '');
 
     addOptions(info.lastInsertRowid, options);
     return getQuestion(info.lastInsertRowid);
@@ -368,15 +376,17 @@ export function updateQuestion(questionId, fields) {
          + (SELECT COUNT(*) FROM responses WHERE question_id = ?) AS n
   `).get(questionId, questionId).n > 0;
 
-  db.prepare(
-    'UPDATE questions SET title = ?, description = ?, position = ?, type = ? WHERE id = ?',
-  ).run(
+  db.prepare(`
+    UPDATE questions SET title = ?, description = ?, position = ?, type = ?, cluster_hint = ?
+    WHERE id = ?
+  `).run(
     fields.title ?? current.title,
     fields.description ?? current.description,
     fields.position ?? current.position,
     answered || fields.type == null
       ? current.type
       : normalizeQuestionType(fields.type),
+    fields.clusterHint ?? current.cluster_hint ?? '',
     questionId,
   );
 
@@ -898,6 +908,7 @@ export function seedFromFiles(log = console.log) {
           description: typeof q.description === 'string' ? q.description : '',
           type: normalizeQuestionType(q.type),
           options: Array.isArray(q.options) ? q.options : [],
+          clusterHint: typeof q.clusterHint === 'string' ? q.clusterHint : '',
         });
       }
       return created;

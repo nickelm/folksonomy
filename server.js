@@ -648,6 +648,7 @@ app.post('/api/sheets/:slug/questions', requireAuth, (req, res) => {
     description: String(req.body?.description || '').trim(),
     type,
     options,
+    clusterHint: String(req.body?.clusterHint || '').trim(),
   });
   markDirty(sheet.id);
   return res.status(201).json({ question });
@@ -674,6 +675,7 @@ app.patch('/api/questions/:id', requireAuth, (req, res) => {
     description: req.body?.description != null ? String(req.body.description).trim() : undefined,
     position: req.body?.position != null ? Number(req.body.position) : undefined,
     type: req.body?.type != null ? normalizeQuestionType(req.body.type) : undefined,
+    clusterHint: req.body?.clusterHint != null ? String(req.body.clusterHint).trim() : undefined,
   });
   markDirty(question.sheet_id);
   return res.json({ question: updated });
@@ -744,6 +746,7 @@ app.get('/api/sheets/:slug/export.json', requireAuth, (req, res) => {
     };
 
     if (question.type === 'freetext') {
+      if (question.cluster_hint) entry.clusterHint = question.cluster_hint;
       entry.responses = listResponses(question.id, Number.MAX_SAFE_INTEGER);
       entry.clusters = listClusters(question.id);
     } else if (question.type === 'choice') {

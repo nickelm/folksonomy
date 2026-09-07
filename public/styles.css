@@ -169,6 +169,46 @@ body {
 
 .tag-form button:disabled { background: #b9bfcb; cursor: not-allowed; }
 
+/* ---------- tag suggestions ---------- */
+/* In flow directly under the input, not a popover: on a phone the on-screen
+   keyboard covers the lower half of the screen and a popover would open into
+   it. In flow, the list pushes the cloud down and stays in view. */
+
+.tag-suggest {
+  /* Tuck up to the form; the bottom margin beats .hint's negative pull. */
+  margin: -.5rem 0 .9rem;
+  border: 1.5px solid var(--line);
+  border-radius: 10px;
+  background: #fff;
+  overflow: hidden;
+}
+
+.tag-suggest-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: .6rem;
+  /* Same tap-target floor as the Add button. */
+  min-height: 44px;
+  padding: .5rem .8rem;
+  cursor: pointer;
+}
+
+.tag-suggest-row + .tag-suggest-row { border-top: 1px solid var(--line); }
+
+.tag-suggest-row.is-active,
+.tag-suggest-row:hover { background: var(--accent-soft); }
+
+.tag-suggest-row.is-mine .label { color: #10307c; font-weight: 600; }
+
+.tag-suggest-row .count {
+  color: var(--ink-faint);
+  font-size: .85rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.tag-suggest-row.is-mine .count { color: var(--accent); }
+
 .hint {
   margin: -.55rem 0 .8rem;
   font-size: .85rem;
@@ -382,6 +422,8 @@ body.presenter .tag .count { font-size: .85em; font-weight: 700; }
   word-break: break-all;
   line-height: 1.15;
 }
+
+.join-main { flex: 1 1 260px; min-width: 0; }
 
 .join-hint { color: var(--ink-soft); margin: .3rem 0 0; }
 
@@ -772,6 +814,56 @@ body.live {
   font-size: clamp(.85rem, 1.1vw, 1.1rem);
   color: #6c7688;
 }
+
+/* ---------- presenter "Next" control (dashboard + live view) ---------- */
+
+.advance {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: .35rem;
+}
+
+.advance-signin {
+  font: inherit;
+  font-size: .85rem;
+  color: var(--ink-faint);
+  background: none;
+  border: 0;
+  padding: .2rem 0;
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+.advance-signin:hover, .advance-signin:focus { color: var(--accent); }
+
+.advance-login { display: flex; gap: .4rem; align-items: center; flex-wrap: wrap; }
+
+.advance-login input {
+  font: inherit;
+  min-height: 36px;
+  padding: 0 .6rem;
+  border: 1.5px solid var(--line);
+  border-radius: 10px;
+}
+
+.advance-control { display: flex; align-items: center; gap: .7rem; flex-wrap: wrap; }
+
+.advance-upcoming { font-size: .9rem; color: var(--ink-soft); max-width: 24rem; }
+
+/* .hint's negative top margin is for the tag form, not for here. */
+.advance-hint, .advance-error { margin: 0; min-height: 0; }
+
+.dash-join .advance { flex: 0 0 auto; }
+
+/* On the projector the link fades into the footer; it is for the lectern, not
+   the back row. Everything else keeps the dark palette of the page. */
+body.live .advance { align-items: center; }
+body.live .advance-signin { color: #6c7688; opacity: .45; font-size: inherit; }
+body.live .advance-signin:hover, body.live .advance-signin:focus { opacity: 1; }
+body.live .advance-next { min-height: 32px; padding: 0 .8rem; font-size: .9rem; }
+body.live .advance-upcoming { color: #9aa3b5; }
+body.live .advance-login input { background: #151924; color: #f3f5f9; border-color: #232838; }
 
 /* ---------- dashboard ---------- */
 

@@ -141,9 +141,14 @@ export class Clusterer {
   }
 
   async ask(question, responses) {
+    // A hint is the presenter steering the shape of the themes for this one
+    // question - "name the failure, not the product" - without touching the
+    // system prompt every question shares.
+    const hint = typeof question.cluster_hint === 'string' ? question.cluster_hint.trim() : '';
     const userPrompt = [
       `Question the students answered: "${question.title}"`,
       question.description ? `Clarification shown to them: "${question.description}"` : '',
+      hint ? `Guidance for naming the themes: ${hint}` : '',
       '',
       `${responses.length} answers, as "id: text":`,
       ...responses.map((r) => `${r.id}: ${r.text}`),
