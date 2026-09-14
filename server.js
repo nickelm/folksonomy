@@ -8,6 +8,7 @@ import http from 'node:http';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
+import dotenv from 'dotenv';
 import 'dotenv/config';
 import express from 'express';
 import { WebSocketServer } from 'ws';
@@ -26,6 +27,21 @@ import { MergeWorker } from './merge.js';
 import { isValidSlug } from './slugs.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
+
+// dotenv never overrides a variable the process already has, and pm2 keeps the
+// environment a process was first started with across every restart. So a join
+// URL from an old setup (":8080") silently beats a corrected .env, and the QR
+// code sends the room to the wrong port. The join URL is only ever meant to be
+// configured in .env, so for this one variable the file wins. PORT deliberately
+// does not get the same treatment: `PORT=8099 npm start` is how tests run.
+const fileEnv = {};
+dotenv.config({ path: path.join(HERE, '.env'), processEnv: fileEnv, quiet: true });
+if (fileEnv.PUBLIC_BASE_URL && fileEnv.PUBLIC_BASE_URL !== process.env.PUBLIC_BASE_URL) {
+  console.log(`[config] ignoring PUBLIC_BASE_URL=${process.env.PUBLIC_BASE_URL} from the `
+    + `environment; using ${fileEnv.PUBLIC_BASE_URL} from .env`);
+  process.env.PUBLIC_BASE_URL = fileEnv.PUBLIC_BASE_URL;
+}
+
 const PORT = Number(process.env.PORT) || 3000;
 const PRESENTER_PASSWORD = process.env.PRESENTER_PASSWORD || '';
 
@@ -924,6 +940,15 @@ server.listen(PORT, () => {
   console.log(`Folksonomy sheets listening on port ${PORT}`);
   console.log(`  students  ${base}/`);
   console.log(`  presenter ${base}/presenter`);
+
+  // The address on the QR code has to reach this process. An explicit port that
+  // differs from the one we listen on is almost always a stale setting.
+  let advertised = '';
+  try { advertised = new URL(base).port; } catch { /* not a URL; nothing to compare */ }
+  if (advertised && Number(advertised) !== PORT) {
+    console.log(`[config] WARNING: PUBLIC_BASE_URL uses port ${advertised} but the server `
+      + `listens on ${PORT} - the join URL and QR code will point at the wrong port`);
+  }
 });
 
 function shutdown() {
