@@ -64,6 +64,29 @@ try {
   check('every alias points at a live tag',
     chained.every((a) => a.canonical === 'usability'), JSON.stringify(chained));
   check('the chained merge kept both voters', count('usability') === 5);
+
+  // Leading imperatives fold locally, but only on a question that asks for it.
+  const sq = addQuestion(sheet.id, {
+    title: 'rules', stripPrefixes: ['Be', 'make', 'use', 'provide', 'show'], options: ['use cases'],
+  });
+  const sLabels = () => listTags(sq.id).map((t) => t.label).sort();
+  check('prefixes are stored normalized', sq.strip_prefixes === 'be make use provide show');
+  recordTag({ questionId: sq.id, rawTag: 'consistent', sessionId: 'a' });
+  const beResult = recordTag({ questionId: sq.id, rawTag: 'Be  Consistent', sessionId: 'b' });
+  check('"be consistent" lands on "consistent"',
+    beResult.ok && !beResult.created && beResult.label === 'consistent');
+  const fresh = recordTag({ questionId: sq.id, rawTag: 'show feedback', sessionId: 'a' });
+  check('a new stripped tag is created under the short form',
+    fresh.created && fresh.label === 'feedback');
+  check('a bare prefix word is kept', recordTag({ questionId: sq.id, rawTag: 'show', sessionId: 'a' }).label === 'show');
+  check('an exact existing tag wins over stripping',
+    recordTag({ questionId: sq.id, rawTag: 'use cases', sessionId: 'a' }).label === 'use cases');
+  check('only the first word is stripped',
+    recordTag({ questionId: sq.id, rawTag: 'use make sense', sessionId: 'a' }).label === 'make sense');
+  check('stripped board', JSON.stringify(sLabels())
+    === JSON.stringify(['consistent', 'feedback', 'make sense', 'show', 'use cases']), JSON.stringify(sLabels()));
+  check('a question without prefixes does not strip',
+    recordTag({ questionId: q.id, rawTag: 'be consistent', sessionId: 'a' }).label === 'be consistent');
 } finally {
   deleteSheet(sheet.id);
 }

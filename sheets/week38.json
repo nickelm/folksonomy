@@ -1,0 +1,20 @@
+{
+  "slug": "week38",
+  "title": "Design Guidelines, Principles, and Theories",
+  "status": "draft",
+  "questions": [
+    {
+      "title": "What rules should a user interface follow?",
+      "type": "tags",
+      "description": "Name one rule, guideline, or principle you think good interfaces obey. One to three words. Add more than one if you have them.",
+      "stripPrefixes": ["be", "make", "use", "provide", "show"],
+      "mergeHint": "These tags are candidate UI design rules. Merge two tags only when they name the SAME rule (\"consistency\" / \"consistent\", \"feedback\" / \"give feedback\"). Never merge two rules that merely co-occur or are related: \"feedback\" and \"visibility\" stay separate, as do \"consistency\" and \"familiarity\"."
+    },
+    {
+      "title": "Guideline, principle, or theory — what is the difference?",
+      "type": "freetext",
+      "description": "These three words get used interchangeably. Argue for a distinction in a sentence or two.",
+      "clusterHint": "Cluster by the KIND of distinction each response proposes (for example: level of abstraction, breadth of applicability, whether it is empirically testable, where it comes from, how prescriptive it is). Do not cluster by which of the three terms the response happens to mention first. Name each cluster with a short noun phrase naming the distinction, not a summary of the responses."
+    }
+  ]
+}

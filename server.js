@@ -649,6 +649,8 @@ app.post('/api/sheets/:slug/questions', requireAuth, (req, res) => {
     type,
     options,
     clusterHint: String(req.body?.clusterHint || '').trim(),
+    mergeHint: String(req.body?.mergeHint || '').trim(),
+    stripPrefixes: req.body?.stripPrefixes ?? '',
   });
   markDirty(sheet.id);
   return res.status(201).json({ question });
@@ -676,6 +678,8 @@ app.patch('/api/questions/:id', requireAuth, (req, res) => {
     position: req.body?.position != null ? Number(req.body.position) : undefined,
     type: req.body?.type != null ? normalizeQuestionType(req.body.type) : undefined,
     clusterHint: req.body?.clusterHint != null ? String(req.body.clusterHint).trim() : undefined,
+    mergeHint: req.body?.mergeHint != null ? String(req.body.mergeHint).trim() : undefined,
+    stripPrefixes: req.body?.stripPrefixes ?? undefined,
   });
   markDirty(question.sheet_id);
   return res.json({ question: updated });
@@ -752,6 +756,8 @@ app.get('/api/sheets/:slug/export.json', requireAuth, (req, res) => {
     } else if (question.type === 'choice') {
       entry.options = listOptions(question.id);
     } else {
+      if (question.merge_hint) entry.mergeHint = question.merge_hint;
+      if (question.strip_prefixes) entry.stripPrefixes = question.strip_prefixes.split(' ');
       entry.tags = listTags(question.id);
       // The merge history is the interesting part for a folksonomy exercise: it
       // shows which words the class produced before they were folded together.

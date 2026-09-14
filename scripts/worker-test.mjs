@@ -74,6 +74,21 @@ try {
     JSON.stringify(labels()) === JSON.stringify(['design', 'usability']),
     JSON.stringify(labels()));
   check('the sheet was flagged for rebroadcast', changed.includes(sheet.id));
+  check('no merge context without a hint',
+    !calls[0]?.messages[0].content.includes('Context for judging these tags'));
+
+  // A per-question merge hint reaches the model, on that question only.
+  const hq = addQuestion(sheet.id, {
+    title: 'What rules should a UI follow?', mergeHint: 'Tags are candidate UI design rules.',
+  });
+  recordTag({ questionId: hq.id, rawTag: 'feedback', sessionId: 'a' });
+  recordTag({ questionId: hq.id, rawTag: 'visibility', sessionId: 'b' });
+  const hintCalls = stub(worker, () => ({ merges: [{ tag: 'visibility', merge_into: null }] }));
+  worker.enqueue(hq.id, 'visibility');
+  await sleep(2400);
+  check('the merge hint is sent with the question', hintCalls.length === 1
+    && hintCalls[0].messages[0].content
+      .includes('Context for judging these tags: Tags are candidate UI design rules.'));
 
   // ---- the guards, exercised with deliberately bad model output ----
 

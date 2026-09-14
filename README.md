@@ -109,6 +109,18 @@ themes. For example `"Name the interface failure rather than the product."`
 turns "ChatGPT problems" into "no indication of confidence". The same field is
 accepted by the questions API as `clusterHint`. See `sheets/ui-for-ai.json`.
 
+A **tags** question has two matching knobs, both optional and both per question:
+
+- `mergeHint` - context appended to the merge prompt, such as "these tags are
+  candidate design rules; merge only when two name the same rule".
+- `stripPrefixes` - leading words dropped from a new tag before it is looked up,
+  e.g. `["be", "make", "use"]`, so "be consistent" lands on "consistent" with no
+  API call. Only the first word is stripped, a tag that is only the prefix word
+  is kept, and an exact tag already on the board still wins, so a seeded
+  "use cases" is never turned into "cases".
+
+See `sheets/week38.json`.
+
 `options` means two different things, deliberately:
 
 - on a **choice** question they are the ballot. At least two, at most eight, and

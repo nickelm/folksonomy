@@ -159,9 +159,13 @@ export class MergeWorker {
   }
 
   async ask(question, candidates, newLabels) {
+    // Per-question context, like the clustering hint: what kind of thing these
+    // tags are, so the model can tell one idea from two that co-occur.
+    const hint = typeof question.merge_hint === 'string' ? question.merge_hint.trim() : '';
     const userPrompt = [
       `Question the students are answering: "${question.title}"`,
       question.description ? `Clarification shown to them: "${question.description}"` : '',
+      hint ? `Context for judging these tags: ${hint}` : '',
       '',
       'Existing tags (label, votes):',
       ...candidates.map((t) => `- ${t.label} (${t.count})`),

@@ -141,6 +141,13 @@ addColumnIfMissing('tags', 'seeded', 'seeded INTEGER NOT NULL DEFAULT 0');
 // clustering prompt, such as "name the interface failure, not the product".
 // Only freetext questions use it; it is harmless on the others.
 addColumnIfMissing('questions', 'cluster_hint', "cluster_hint TEXT NOT NULL DEFAULT ''");
+// The same kind of steer for tag merging: context appended to the merge prompt,
+// such as "tags are candidate design rules; merge only the same rule".
+addColumnIfMissing('questions', 'merge_hint', "merge_hint TEXT NOT NULL DEFAULT ''");
+// Space-separated leading words to drop from a new tag before it is looked up,
+// so "be consistent" and "consistent" are one tag with no API round trip. Per
+// question, because a global rule would turn "use cases" into "cases".
+addColumnIfMissing('questions', 'strip_prefixes', "strip_prefixes TEXT NOT NULL DEFAULT ''");
 
 /**
  * Fold a raw submission into its canonical stored form, or return null if it is
@@ -153,6 +160,29 @@ export function normalizeTag(raw) {
   if (!cleaned) return null;
   if (cleaned.length > MAX_TAG_LENGTH) return null;
   return cleaned;
+}
+
+/**
+ * Canonical form of a strip-prefix list: lowercase single words, space-separated.
+ * Accepts an array or a string, so the sheet file and the API can use either.
+ */
+export function normalizeStripPrefixes(raw) {
+  const words = Array.isArray(raw) ? raw : String(raw ?? '').split(/[\s,]+/);
+  return [...new Set(
+    words.map((w) => String(w).trim().toLowerCase()).filter((w) => /^[\p{L}\p{N}'-]+$/u.test(w)),
+  )].join(' ');
+}
+
+/**
+ * Drop one leading word from an already-normalized tag if it is in `prefixes`.
+ * A tag that is nothing but the prefix ("show") is left alone rather than erased.
+ */
+export function stripTagPrefix(label, prefixes) {
+  if (!label || !prefixes) return label;
+  const space = label.indexOf(' ');
+  if (space < 0) return label;
+  const first = label.slice(0, space);
+  return prefixes.split(' ').includes(first) ? label.slice(space + 1) : label;
 }
 
 /**
@@ -251,12 +281,14 @@ export function cloneSheet(sourceSheetId, title) {
     const source = getSheetById(sourceSheetId);
     const sheet = createSheet({ title: title || `${source.title} (copy)` });
     const insert = db.prepare(`
-      INSERT INTO questions (sheet_id, position, title, description, type, cluster_hint)
-      VALUES (?, ?, ?, ?, ?, ?)
+      INSERT INTO questions
+        (sheet_id, position, title, description, type, cluster_hint, merge_hint, strip_prefixes)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     `);
     for (const q of listQuestions(sourceSheetId)) {
       const info = insert.run(
         sheet.id, q.position, q.title, q.description, q.type, q.cluster_hint ?? '',
+        q.merge_hint ?? '', q.strip_prefixes ?? '',
       );
       // Seeded options are part of the question, not part of the answers, so a
       // clone starts with them and with nothing else: a cloned choice question
@@ -299,6 +331,7 @@ export function getQuestion(questionId) {
  */
 export function addQuestion(sheetId, {
   title, description = '', type = 'tags', options = [], clusterHint = '',
+  mergeHint = '', stripPrefixes = '',
 }) {
   return db.transaction(() => {
     const next = db.prepare(
@@ -306,9 +339,13 @@ export function addQuestion(sheetId, {
     ).get(sheetId).pos;
 
     const info = db.prepare(`
-      INSERT INTO questions (sheet_id, position, title, description, type, cluster_hint)
-      VALUES (?, ?, ?, ?, ?, ?)
-    `).run(sheetId, next, title, description, normalizeQuestionType(type), clusterHint || '');
+      INSERT INTO questions
+        (sheet_id, position, title, description, type, cluster_hint, merge_hint, strip_prefixes)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      sheetId, next, title, description, normalizeQuestionType(type), clusterHint || '',
+      mergeHint || '', normalizeStripPrefixes(stripPrefixes),
+    );
 
     addOptions(info.lastInsertRowid, options);
     return getQuestion(info.lastInsertRowid);
@@ -377,7 +414,8 @@ export function updateQuestion(questionId, fields) {
   `).get(questionId, questionId).n > 0;
 
   db.prepare(`
-    UPDATE questions SET title = ?, description = ?, position = ?, type = ?, cluster_hint = ?
+    UPDATE questions SET title = ?, description = ?, position = ?, type = ?, cluster_hint = ?,
+                         merge_hint = ?, strip_prefixes = ?
     WHERE id = ?
   `).run(
     fields.title ?? current.title,
@@ -387,6 +425,10 @@ export function updateQuestion(questionId, fields) {
       ? current.type
       : normalizeQuestionType(fields.type),
     fields.clusterHint ?? current.cluster_hint ?? '',
+    fields.mergeHint ?? current.merge_hint ?? '',
+    fields.stripPrefixes != null
+      ? normalizeStripPrefixes(fields.stripPrefixes)
+      : current.strip_prefixes ?? '',
     questionId,
   );
 
@@ -434,6 +476,7 @@ const findAlias = db.prepare(
 const countSessionTags = db.prepare(
   'SELECT COUNT(*) AS n FROM votes WHERE question_id = ? AND session_id = ?',
 );
+const findStripPrefixes = db.prepare('SELECT strip_prefixes FROM questions WHERE id = ?');
 
 /**
  * Record a submission or a vote. Both paths converge here, because "type a tag
@@ -443,19 +486,29 @@ const countSessionTags = db.prepare(
  * genuinely new tag was inserted, which is the signal the merge worker waits for.
  */
 export function recordTag({ questionId, rawTag, sessionId, allowCreate = true }) {
-  const label = normalizeTag(rawTag);
-  if (!label) return { ok: false, reason: 'invalid_tag' };
+  const exact = normalizeTag(rawTag);
+  if (!exact) return { ok: false, reason: 'invalid_tag' };
   if (!sessionId || typeof sessionId !== 'string') {
     return { ok: false, reason: 'invalid_session' };
   }
 
-  return db.transaction(() => {
+  // "be consistent" lands on "consistent" - unless "be consistent" itself is
+  // already on the board (a seeded option, or a tag from before the question
+  // had prefixes), in which case the exact word still wins.
+  const stripped = stripTagPrefix(exact, findStripPrefixes.get(questionId)?.strip_prefixes);
+
+  const lookup = (label) => {
     // An alias means this word was already folded into another tag. Resolve it
     // locally rather than troubling the model with a word we have already judged.
     const alias = findAlias.get(questionId, label);
-    let tag = alias
+    return alias
       ? db.prepare('SELECT * FROM tags WHERE id = ?').get(alias.canonical_tag_id)
       : findTag.get(questionId, label);
+  };
+
+  return db.transaction(() => {
+    const label = stripped;
+    let tag = lookup(exact) || (stripped !== exact ? lookup(stripped) : undefined);
 
     let created = false;
 
@@ -909,6 +962,8 @@ export function seedFromFiles(log = console.log) {
           type: normalizeQuestionType(q.type),
           options: Array.isArray(q.options) ? q.options : [],
           clusterHint: typeof q.clusterHint === 'string' ? q.clusterHint : '',
+          mergeHint: typeof q.mergeHint === 'string' ? q.mergeHint : '',
+          stripPrefixes: q.stripPrefixes ?? '',
         });
       }
       return created;
