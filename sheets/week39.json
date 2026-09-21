@@ -1,0 +1,58 @@
+{
+  "slug": "week39",
+  "title": "Mental Models and Visual Design",
+  "status": "draft",
+  "questions": [
+    {
+      "title": "Name an interface metaphor you used today.",
+      "type": "tags",
+      "description": "A word software borrowed from the physical world. One to three words. Add as many as you can think of.",
+      "stripPrefixes": [
+        "the",
+        "a",
+        "an",
+        "my"
+      ],
+      "mergeHint": "These tags name interface metaphors borrowed from the physical world. Merge two tags only when they name the SAME borrowed object or action (\"trash\" / \"bin\" / \"recycle bin\", \"cart\" / \"shopping cart\", \"cut and paste\" / \"copy paste\"). Never merge two different metaphors just because they come from the same place: \"folder\" and \"file\" stay separate, as do \"desktop\" and \"window\", \"cloud\" and \"drive\", \"bookmark\" and \"tab\".",
+      "options": [
+        "desktop",
+        "folder",
+        "trash"
+      ]
+    },
+    {
+      "title": "Where does that metaphor break down?",
+      "type": "freetext",
+      "description": "Pick one metaphor and name the moment it stops matching the world it came from. One or two sentences.",
+      "clusterHint": "Cluster by the KIND of breakdown, not by which metaphor is mentioned. Useful kinds look like: the physical action is impossible (a file in two folders at once), the digital object does more than the physical one (emptying the trash is unrecoverable), two metaphors collide (dragging a disk to the trash to eject it), the source object is obsolete (the floppy-disk save icon), the metaphor hides a risk or a cost (\"the cloud\" is someone else's computer), the metaphor never covered the real task. Name each cluster with a short noun phrase naming the kind of breakdown, not a summary of the responses."
+    },
+    {
+      "title": "The desktop metaphor: what is really going on?",
+      "type": "choice",
+      "description": "Pick the one closest to your view. We will disagree about this for ten minutes.",
+      "options": [
+        "the computer pretends to be a desk",
+        "we reuse what we know about desks",
+        "neither a desk nor a file system",
+        "a 1980s leftover we are stuck with"
+      ]
+    },
+    {
+      "title": "How do you make one thing on a screen stand out?",
+      "type": "tags",
+      "description": "Name a visual property you would change to pull the eye to it. One or two words.",
+      "stripPrefixes": [
+        "make",
+        "use",
+        "add",
+        "more",
+        "change"
+      ],
+      "mergeHint": "These tags name visual properties used to make an element stand out. Merge only spellings, plurals, and true synonyms of the same property (\"colour\" / \"color\", \"white space\" / \"whitespace\", \"bigger\" / \"size\", \"bold\" / \"weight\"). Never merge two distinct visual properties: \"color\" and \"contrast\" stay separate, as do \"position\" and \"alignment\", \"size\" and \"shape\", \"motion\" and \"blinking\".",
+      "options": [
+        "color",
+        "size"
+      ]
+    }
+  ]
+}

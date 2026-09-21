@@ -130,6 +130,10 @@ See `sheets/week38.json`.
   "engineering" get put up without deciding for the room that those are the only
   two answers.
 
+An option label is stored as a tag, so it is lowercased and capped at 40
+characters; anything longer is dropped without a word. Keep ballot options short -
+they also have to fit a bar on the projector.
+
 Authored options are remembered as authored. Cloning a sheet carries them over
 and leaves last year's student answers behind, and tag merging will never fold
 one away into a word a student typed.
